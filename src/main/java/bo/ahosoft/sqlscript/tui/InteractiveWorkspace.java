@@ -204,6 +204,28 @@ public final class InteractiveWorkspace {
             List<String> selectedSchemas,
             List<String> availableSchemas
         ) {
+            return createConnection(
+                name,
+                databaseType,
+                ConnectionEnvironment.DEV,
+                jdbcUrl,
+                username,
+                password,
+                selectedSchemas,
+                availableSchemas
+            );
+        }
+
+        public ConnectionConfig createConnection(
+            String name,
+            DatabaseType databaseType,
+            ConnectionEnvironment environment,
+            String jdbcUrl,
+            String username,
+            String password,
+            List<String> selectedSchemas,
+            List<String> availableSchemas
+        ) {
             List<String> schemas = selectedSchemas == null ? Collections.<String>emptyList() : selectedSchemas;
             if (
                 databaseType == DatabaseType.POSTGRESQL &&
@@ -213,7 +235,7 @@ public final class InteractiveWorkspace {
             ) {
                 schemas = Arrays.asList("public");
             }
-            ConnectionConfig config = new ConnectionConfig(databaseType, jdbcUrl, username, password, schemas);
+            ConnectionConfig config = new ConnectionConfig(databaseType, environment, jdbcUrl, username, password, schemas);
             addConnection(name, config);
             activeConnectionName = name;
             return config;
@@ -274,7 +296,38 @@ public final class InteractiveWorkspace {
             List<String> selectedSchemas,
             List<String> availableSchemas
         ) throws IOException {
-            ConnectionConfig config = createConnection(name, databaseType, jdbcUrl, username, password, selectedSchemas, availableSchemas);
+            return createConnectionFromAction(
+                name,
+                databaseType,
+                ConnectionEnvironment.DEV,
+                jdbcUrl,
+                username,
+                password,
+                selectedSchemas,
+                availableSchemas
+            );
+        }
+
+        public ConnectionConfig createConnectionFromAction(
+            String name,
+            DatabaseType databaseType,
+            ConnectionEnvironment environment,
+            String jdbcUrl,
+            String username,
+            String password,
+            List<String> selectedSchemas,
+            List<String> availableSchemas
+        ) throws IOException {
+            ConnectionConfig config = createConnection(
+                name,
+                databaseType,
+                environment,
+                jdbcUrl,
+                username,
+                password,
+                selectedSchemas,
+                availableSchemas
+            );
             if (registry != null) {
                 registry.save(name, config);
             }
@@ -313,7 +366,14 @@ public final class InteractiveWorkspace {
                 return metadataCommand(editorCommand);
             }
             try {
-                SafetyGuard.requireSafe(statement, hasFlag(arguments, "--force"), valueAfter(arguments, "--confirm-risk"));
+                SafetyGuard.requireSafe(
+                    statement,
+                    activeConnection().environment(),
+                    activeConnectionName,
+                    hasFlag(arguments, "--force"),
+                    hasFlag(arguments, "--unsafe"),
+                    valueAfter(arguments, "--confirm-risk")
+                );
                 SqlExecutionResult result = executor.executeSingle(activeConnection(), statement);
                 if (editorStore != null) {
                     editorStore.recordHistory(statement, false);
@@ -359,8 +419,14 @@ public final class InteractiveWorkspace {
             }
             try {
                 DatabaseType databaseType = DatabaseType.fromStoredValue(values.get(0));
-                List<String> selectedSchemas = values.size() > 5
-                    ? ConfigStore.parseSchemas(values.get(5))
+                int nextIndex = 5;
+                ConnectionEnvironment environment = ConnectionEnvironment.DEV;
+                if (values.size() > nextIndex && isEnvironment(values.get(nextIndex))) {
+                    environment = ConnectionEnvironment.fromInputValue(values.get(nextIndex));
+                    nextIndex++;
+                }
+                List<String> selectedSchemas = values.size() > nextIndex
+                    ? ConfigStore.parseSchemas(values.get(nextIndex))
                     : Collections.<String>emptyList();
                 List<String> availableSchemas = databaseType == DatabaseType.POSTGRESQL
                     ? Arrays.asList("public")
@@ -368,6 +434,7 @@ public final class InteractiveWorkspace {
                 ConnectionConfig config = createConnection(
                     values.get(1),
                     databaseType,
+                    environment,
                     values.get(2),
                     values.get(3),
                     values.get(4),
@@ -506,6 +573,7 @@ public final class InteractiveWorkspace {
                     new WorkspaceDashboardRenderer.ConnectionSummary(
                         summary.name(),
                         summary.databaseType().name(),
+                        summary.environment().name(),
                         summary.name().equals(activeConnectionName)
                     )
                 );
@@ -528,6 +596,7 @@ public final class InteractiveWorkspace {
                     new ConnectionRegistry.ConnectionSummary(
                         entry.getKey(),
                         config.databaseType(),
+                        config.environment(),
                         config.jdbcUrl(),
                         config.username(),
                         config.schemas()
@@ -563,6 +632,15 @@ public final class InteractiveWorkspace {
 
         private static boolean hasFlag(List<String> values, String flag) {
             return values.contains(flag);
+        }
+
+        private static boolean isEnvironment(String value) {
+            try {
+                ConnectionEnvironment.fromInputValue(value);
+                return true;
+            } catch (IllegalArgumentException ex) {
+                return false;
+            }
         }
 
         private static boolean isEditorMetadata(WorkspaceCommand.Type type) {

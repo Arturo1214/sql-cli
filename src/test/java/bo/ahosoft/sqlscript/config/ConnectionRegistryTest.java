@@ -35,6 +35,7 @@ public class ConnectionRegistryTest {
         assertEquals(config.jdbcUrl(), loaded.jdbcUrl());
         assertEquals(config.username(), loaded.username());
         assertEquals(config.password(), loaded.password());
+        assertEquals(ConnectionEnvironment.DEV, loaded.environment());
 
         String stored = readConnectionFile("qa");
         assertTrue(stored.contains("username=qa_user"));
@@ -95,6 +96,7 @@ public class ConnectionRegistryTest {
 
         ConnectionConfig loaded = registry.load("pg");
         assertEquals(DatabaseType.POSTGRESQL, loaded.databaseType());
+        assertEquals(ConnectionEnvironment.DEV, loaded.environment());
         assertEquals(Arrays.asList("app", "audit"), loaded.schemas());
         assertEquals("pg-secret", loaded.password());
 
@@ -138,10 +140,31 @@ public class ConnectionRegistryTest {
         List<ConnectionRegistry.ConnectionSummary> summaries = registry.list();
 
         assertEquals(DatabaseType.POSTGRESQL, summaries.get(0).databaseType());
+        assertEquals(ConnectionEnvironment.DEV, summaries.get(0).environment());
         assertEquals(Arrays.asList("app", "audit"), summaries.get(0).schemas());
         assertTrue(summaries.get(0).toString().contains("POSTGRESQL"));
         assertTrue(summaries.get(0).toString().contains("app,audit"));
         assertFalse(summaries.get(0).toString().contains("pg-secret"));
+    }
+
+    @Test
+    public void savesListsAndLoadsConnectionEnvironment() throws Exception {
+        ConnectionRegistry registry = registry();
+        ConnectionConfig config = new ConnectionConfig(
+            DatabaseType.ORACLE,
+            ConnectionEnvironment.PROD,
+            "jdbc:oracle:thin:@prod:1521/PROD",
+            "support",
+            "secret",
+            Arrays.<String>asList()
+        );
+
+        registry.save("billing-prod", config);
+
+        assertEquals(ConnectionEnvironment.PROD, registry.load("billing-prod").environment());
+        assertEquals(ConnectionEnvironment.PROD, registry.list().get(0).environment());
+        assertTrue(readConnectionFile("billing-prod").contains("environment=PROD"));
+        assertTrue(registry.list().get(0).toString().contains("PROD"));
     }
 
     private ConnectionRegistry registry() throws Exception {

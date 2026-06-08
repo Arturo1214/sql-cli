@@ -125,14 +125,29 @@ public final class ConnectionListComponent {
         String password,
         List<String> schemas
     ) {
+        return prepareConnection(databaseType, ConnectionEnvironment.DEV, jdbcUrl, username, password, schemas);
+    }
+
+    public static ConnectionConfig prepareConnection(
+        DatabaseType databaseType,
+        ConnectionEnvironment environment,
+        String jdbcUrl,
+        String username,
+        String password,
+        List<String> schemas
+    ) {
         if (databaseType == DatabaseType.POSTGRESQL && (schemas == null || schemas.isEmpty())) {
-            return new ConnectionConfig(databaseType, jdbcUrl, username, password, Collections.singletonList("public"));
+            return new ConnectionConfig(databaseType, environment, jdbcUrl, username, password, Collections.singletonList("public"));
         }
-        return new ConnectionConfig(databaseType, jdbcUrl, username, password, schemas);
+        return new ConnectionConfig(databaseType, environment, jdbcUrl, username, password, schemas);
     }
 
     private static String renderConnection(ConnectionItem item) {
         StringBuilder line = new StringBuilder();
+        if (item.config().environment().isProduction()) {
+            line.append("!! PROD !! ");
+        }
+        line.append('[').append(item.config().environment()).append("] ");
         line.append(item.name()).append(" [").append(item.config().databaseType()).append(']');
         if (!item.config().schemas().isEmpty()) {
             line.append(" schema=").append(item.config().schemas().get(0));

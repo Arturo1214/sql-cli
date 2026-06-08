@@ -71,13 +71,101 @@ public final class ResultsPanelComponent {
             }
         }
         int visibleContentLines = maxLines <= 0 ? contentLines.size() : Math.max(0, maxLines - 1);
+        if (result != null && result.hasTabularRows() && scrollOffset == 0 && maxLines > 0) {
+            List<String> tabularLines = compactTabularViewport(contentLines, visibleContentLines, safeMessages);
+            if (tabularLines != null) {
+                lines.addAll(tabularLines);
+                return new RenderedPanel(limit(lines, maxLines));
+            }
+        }
         int offset = Math.max(0, Math.min(scrollOffset, Math.max(0, contentLines.size() - visibleContentLines)));
-        int to = visibleContentLines <= 0 ? offset : Math.min(contentLines.size(), offset + visibleContentLines);
+        boolean truncated = visibleContentLines > 0 && offset + visibleContentLines < contentLines.size();
+        int contentLimit = truncated && offset == 0 ? Math.max(0, visibleContentLines - 1) : visibleContentLines;
+        int to = contentLimit <= 0 ? offset : Math.min(contentLines.size(), offset + contentLimit);
         lines.addAll(contentLines.subList(offset, to));
-        if (offset == 0 && visibleContentLines > 0 && to < contentLines.size() && lines.size() == maxLines) {
-            lines.set(lines.size() - 1, "...");
+        if (offset == 0 && visibleContentLines > 0 && to < contentLines.size()) {
+            lines.add("...");
         }
         return new RenderedPanel(limit(lines, maxLines));
+    }
+
+    private static List<String> compactTabularViewport(List<String> contentLines, int visibleContentLines, TuiMessages messages) {
+        if (contentLines.size() <= visibleContentLines) {
+            return null;
+        }
+        int headerIndex = tableHeaderIndex(contentLines);
+        int firstDataRowIndex = firstDataRowIndex(contentLines, headerIndex);
+        if (headerIndex < 0 || firstDataRowIndex < 0 || firstDataRowIndex < visibleContentLines - 1) {
+            return null;
+        }
+        if (visibleContentLines < 3) {
+            return Collections.singletonList(messages.resultRowsNeedMoreHeight());
+        }
+        List<String> compact = new ArrayList<String>();
+        int statusIndex = pageStatusIndex(contentLines);
+        if (statusIndex >= 0) {
+            compact.add(contentLines.get(statusIndex));
+        }
+        compact.add(contentLines.get(headerIndex));
+        int rowIndex = firstDataRowIndex;
+        while (rowIndex < contentLines.size() && compact.size() < visibleContentLines - 1) {
+            String line = contentLines.get(rowIndex);
+            if (!isTableDataRow(line)) {
+                break;
+            }
+            compact.add(line);
+            rowIndex++;
+        }
+        if (rowIndex < contentLines.size()) {
+            compact.add("...");
+        }
+        return compact;
+    }
+
+    private static int pageStatusIndex(List<String> lines) {
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            if (line.startsWith("Page ") || line.startsWith("Pagina ")) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int tableHeaderIndex(List<String> lines) {
+        for (int i = 1; i < lines.size(); i++) {
+            if (isTableSeparator(lines.get(i - 1)) && isTableDataRow(lines.get(i))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private static int firstDataRowIndex(List<String> lines, int headerIndex) {
+        if (headerIndex < 0) {
+            return -1;
+        }
+        for (int i = headerIndex + 1; i < lines.size(); i++) {
+            if (isTableSeparator(lines.get(i))) {
+                for (int row = i + 1; row < lines.size(); row++) {
+                    if (isTableDataRow(lines.get(row))) {
+                        return row;
+                    }
+                    if (isTableSeparator(lines.get(row))) {
+                        return -1;
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static boolean isTableSeparator(String line) {
+        return line != null && line.startsWith("+");
+    }
+
+    private static boolean isTableDataRow(String line) {
+        return line != null && line.startsWith("|");
     }
 
     private static String title(WorkspaceFocus focus, int horizontalOffset, int maxColumns, TuiMessages messages) {

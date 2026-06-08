@@ -14,7 +14,6 @@ import com.googlecode.lanterna.gui2.Interactable;
 import com.googlecode.lanterna.gui2.Label;
 import com.googlecode.lanterna.gui2.LinearLayout;
 import com.googlecode.lanterna.gui2.Panel;
-import com.googlecode.lanterna.gui2.SplitPanel;
 import com.googlecode.lanterna.gui2.TextBox;
 import com.googlecode.lanterna.gui2.Window;
 import com.googlecode.lanterna.input.KeyStroke;
@@ -27,12 +26,6 @@ public class Gui2WorkspaceLayout {
     private static final int COMPACT_WIDTH = 80;
     private static final int COMPACT_HEIGHT = 24;
     private static final int CHROME_ROWS = 6;
-    private static final int PANEL_GAP_COLUMNS = 4;
-    private static final int NARROW_PANEL_GAP_COLUMNS = 0;
-    private static final int NARROW_MIN_EXPLORER_COLUMNS = 16;
-    private static final int NARROW_MIN_EDITOR_COLUMNS = 16;
-    private static final int MIN_EXPLORER_COLUMNS = 20;
-    private static final int MIN_EDITOR_COLUMNS = 32;
     private static final int MIN_CONTENT_ROWS = 12;
     private TuiMessages messages;
 
@@ -75,7 +68,9 @@ public class Gui2WorkspaceLayout {
         resultsText.setLabelWidth(Integer.valueOf(layoutSize.resultsTextSize().getColumns()));
         resultsText.setPreferredSize(layoutSize.resultsTextSize());
         Label statusText = new Label(messages.statusText(state));
+        statusText.setPreferredSize(layoutSize.footerSize());
         Label helpText = new Label(messages.helpHint());
+        helpText.setPreferredSize(layoutSize.footerSize());
 
         Panel editorPanel = new Panel(new LinearLayout(Direction.VERTICAL));
         Label editorTitle = new Label(messages.sqlEditorTitle());
@@ -88,17 +83,13 @@ public class Gui2WorkspaceLayout {
         resultsPanel.addComponent(resultsTitle);
         resultsPanel.addComponent(resultsText);
 
-        Panel rightPanel = new Panel(new LinearLayout(Direction.VERTICAL));
-        rightPanel.addComponent(editorPanel);
-        rightPanel.addComponent(resultsPanel);
-
-        SplitPanel mainSplit = SplitPanel.ofVertical(explorer, rightPanel);
-        mainSplit.setRatio(1, 3);
-
         Panel root = new Panel(new LinearLayout(Direction.VERTICAL));
         Label titleText = new Label(messages.windowTitle());
+        titleText.setPreferredSize(layoutSize.footerSize());
         root.addComponent(titleText);
-        root.addComponent(mainSplit);
+        root.addComponent(explorer);
+        root.addComponent(editorPanel);
+        root.addComponent(resultsPanel);
         root.addComponent(statusText);
         root.addComponent(helpText);
         root.setPreferredSize(layoutSize.rootSize());
@@ -127,6 +118,9 @@ public class Gui2WorkspaceLayout {
         components.resultsPanel().setPreferredSize(layoutSize.resultsSize());
         components.resultsText().setLabelWidth(Integer.valueOf(layoutSize.resultsTextSize().getColumns()));
         components.resultsText().setPreferredSize(layoutSize.resultsTextSize());
+        components.statusText().setPreferredSize(layoutSize.footerSize());
+        components.helpText().setPreferredSize(layoutSize.footerSize());
+        components.titleText().setPreferredSize(layoutSize.footerSize());
         components.window().invalidate();
     }
 
@@ -189,7 +183,8 @@ public class Gui2WorkspaceLayout {
 
     private static String connectionLabel(WorkspaceDashboardRenderer.ConnectionSummary connection) {
         String marker = connection.active() ? "* " : "  ";
-        return marker + connection.name() + " [" + connection.databaseType() + "]";
+        String prodMarker = "PROD".equalsIgnoreCase(connection.environment()) ? "!! PROD !! " : "";
+        return marker + prodMarker + "[" + connection.environment() + "] " + connection.name() + " [" + connection.databaseType() + "]";
     }
 
     public static String resultText(WorkspaceDashboardRenderer.DashboardState state) {
@@ -318,9 +313,8 @@ public class Gui2WorkspaceLayout {
 
         private final int columns;
         private final int rows;
-        private final int explorerColumns;
-        private final int rightColumns;
         private final int contentRows;
+        private final int explorerRows;
         private final int editorRows;
         private final int resultsRows;
 
@@ -331,15 +325,7 @@ public class Gui2WorkspaceLayout {
             this.columns = terminalColumns;
             this.rows = terminalRows;
             this.contentRows = Math.max(MIN_CONTENT_ROWS, terminalRows - CHROME_ROWS);
-            int targetExplorerColumns = compact
-                ? Math.min(MIN_EXPLORER_COLUMNS, Math.max(NARROW_MIN_EXPLORER_COLUMNS, terminalColumns / 3))
-                : Math.max(MIN_EXPLORER_COLUMNS, terminalColumns / 4);
-            int minEditorColumns = compact ? NARROW_MIN_EDITOR_COLUMNS : MIN_EDITOR_COLUMNS;
-            int gapColumns = terminalColumns - targetExplorerColumns - PANEL_GAP_COLUMNS >= minEditorColumns
-                ? PANEL_GAP_COLUMNS
-                : NARROW_PANEL_GAP_COLUMNS;
-            this.explorerColumns = Math.min(targetExplorerColumns, Math.max(1, terminalColumns - minEditorColumns - gapColumns));
-            this.rightColumns = Math.max(1, terminalColumns - explorerColumns - gapColumns);
+            this.explorerRows = compact ? 4 : 6;
             this.editorRows = compact ? Math.max(6, contentRows / 2) : Math.max(6, ((contentRows * 2) / 3) - 1);
             this.resultsRows = Math.max(3, contentRows - editorRows - 2);
         }
@@ -353,19 +339,23 @@ public class Gui2WorkspaceLayout {
         }
 
         public TerminalSize explorerSize() {
-            return new TerminalSize(explorerColumns, contentRows);
+            return new TerminalSize(columns, explorerRows);
         }
 
         public TerminalSize editorSize() {
-            return new TerminalSize(rightColumns, editorRows);
+            return new TerminalSize(columns, editorRows);
         }
 
         public TerminalSize resultsSize() {
-            return new TerminalSize(rightColumns, resultsRows);
+            return new TerminalSize(columns, resultsRows);
         }
 
         public TerminalSize resultsTextSize() {
-            return new TerminalSize(rightColumns, Math.max(1, resultsRows - 1));
+            return new TerminalSize(columns, Math.max(1, resultsRows - 1));
+        }
+
+        public TerminalSize footerSize() {
+            return new TerminalSize(columns, 1);
         }
     }
 

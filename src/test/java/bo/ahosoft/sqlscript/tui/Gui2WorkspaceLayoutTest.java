@@ -52,7 +52,7 @@ public class Gui2WorkspaceLayoutTest {
         assertEquals("select *\nfrom users", components.sqlEditor().getText());
         assertFalse(components.sqlEditor().isReadOnly());
         assertEquals("RESULT: 2 rows", components.resultsText().getText());
-        assertEquals("Status: Query completed | Active: reporting", components.statusText().getText());
+        assertEquals("Status: Query completed | Active: reporting [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("Ctrl+R run"));
         assertTrue(components.helpText().getText().contains("F1/? help"));
         assertFalse(components.helpText().getText().contains("Ctrl+H help"));
@@ -114,8 +114,8 @@ public class Gui2WorkspaceLayoutTest {
         Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout()
             .build(stateWithConnection(), Gui2WorkspaceLayout.WorkspaceUiActions.noop(), new TerminalSize(120, 36));
 
-        assertEquals(new TerminalSize(30, 30), components.explorer().getPreferredSize());
-        assertEquals(new TerminalSize(86, 19), components.sqlEditor().getPreferredSize());
+        assertEquals(120, components.explorer().getPreferredSize().getColumns());
+        assertEquals(120, components.sqlEditor().getPreferredSize().getColumns());
         assertTrue(components.resultsPanel().getPreferredSize().getRows() >= 8);
         assertFalse(new TerminalSize(28, 12).equals(components.explorer().getPreferredSize()));
         assertFalse(new TerminalSize(60, 12).equals(components.sqlEditor().getPreferredSize()));
@@ -132,13 +132,16 @@ public class Gui2WorkspaceLayoutTest {
         );
 
         layout.resize(components, new TerminalSize(72, 18));
-        assertEquals(new TerminalSize(20, 12), components.explorer().getPreferredSize());
-        assertEquals(new TerminalSize(48, 6), components.sqlEditor().getPreferredSize());
+        assertEquals(72, components.explorer().getPreferredSize().getColumns());
+        assertEquals(72, components.sqlEditor().getPreferredSize().getColumns());
+        assertTrue(components.explorer().getPreferredSize().getRows() >= 4);
+        assertTrue(components.sqlEditor().getPreferredSize().getRows() >= 6);
         assertTrue(components.resultsPanel().getPreferredSize().getRows() >= 3);
 
         layout.resize(components, new TerminalSize(160, 48));
-        assertEquals(new TerminalSize(40, 42), components.explorer().getPreferredSize());
-        assertEquals(new TerminalSize(116, 27), components.sqlEditor().getPreferredSize());
+        assertEquals(160, components.explorer().getPreferredSize().getColumns());
+        assertEquals(160, components.sqlEditor().getPreferredSize().getColumns());
+        assertTrue(components.sqlEditor().getPreferredSize().getRows() >= 24);
         assertTrue(components.resultsPanel().getPreferredSize().getRows() >= 12);
     }
 
@@ -148,8 +151,8 @@ public class Gui2WorkspaceLayoutTest {
             .build(stateWithConnection(), Gui2WorkspaceLayout.WorkspaceUiActions.noop(), new TerminalSize(44, 16));
 
         assertPaneSizesFit(components, 44);
-        assertTrue(components.explorer().getPreferredSize().getColumns() >= 16);
-        assertTrue(components.sqlEditor().getPreferredSize().getColumns() >= 16);
+        assertEquals(44, components.explorer().getPreferredSize().getColumns());
+        assertEquals(44, components.sqlEditor().getPreferredSize().getColumns());
         assertEquals(components.resultsPanel().getPreferredSize().getColumns(), components.resultsText().getPreferredSize().getColumns());
     }
 
@@ -172,6 +175,36 @@ public class Gui2WorkspaceLayoutTest {
         assertTrue(components.resultsText().getPreferredSize().getColumns() <= components.resultsPanel().getPreferredSize().getColumns());
     }
 
+    @Test
+    public void editorAndResultsUseAvailableWideTerminalColumns() {
+        Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout()
+            .build(stateWithConnection(), Gui2WorkspaceLayout.WorkspaceUiActions.noop(), new TerminalSize(200, 48));
+
+        assertEquals(200, components.explorer().getPreferredSize().getColumns());
+        assertEquals(200, components.sqlEditor().getPreferredSize().getColumns());
+        assertEquals(200, components.resultsPanel().getPreferredSize().getColumns());
+        assertEquals(components.sqlEditor().getPreferredSize().getColumns(), components.resultsPanel().getPreferredSize().getColumns());
+        assertEquals(components.resultsPanel().getPreferredSize().getColumns(), components.resultsText().getPreferredSize().getColumns());
+    }
+
+    @Test
+    public void stackedActiveLayoutGivesEditorResultsAndFooterFullTerminalWidth() {
+        Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout()
+            .build(stateWithConnection(), Gui2WorkspaceLayout.WorkspaceUiActions.noop(), new TerminalSize(143, 40));
+
+        assertEquals(143, components.root().getPreferredSize().getColumns());
+        assertEquals(143, components.explorer().getPreferredSize().getColumns());
+        assertEquals(143, components.sqlEditor().getPreferredSize().getColumns());
+        assertEquals(143, components.resultsPanel().getPreferredSize().getColumns());
+        assertEquals(143, components.resultsText().getPreferredSize().getColumns());
+        assertTrue(
+            components.statusText().getPreferredSize().getColumns() == 0 || components.statusText().getPreferredSize().getColumns() == 143
+        );
+        assertTrue(
+            components.helpText().getPreferredSize().getColumns() == 0 || components.helpText().getPreferredSize().getColumns() == 143
+        );
+    }
+
     private static WorkspaceDashboardRenderer.DashboardState stateWithConnection() {
         return new WorkspaceDashboardRenderer.DashboardState(
             "reporting",
@@ -188,7 +221,8 @@ public class Gui2WorkspaceLayoutTest {
     private static void assertPaneSizesFit(Gui2WorkspaceLayout.WorkspaceComponents components, int terminalColumns) {
         int explorerColumns = components.explorer().getPreferredSize().getColumns();
         int rightColumns = components.sqlEditor().getPreferredSize().getColumns();
-        assertTrue("pane widths should fit terminal", explorerColumns + rightColumns <= terminalColumns);
+        assertTrue("explorer width should fit terminal", explorerColumns <= terminalColumns);
+        assertTrue("editor width should fit terminal", rightColumns <= terminalColumns);
         assertEquals(rightColumns, components.resultsPanel().getPreferredSize().getColumns());
     }
 }

@@ -34,6 +34,56 @@ public class ResultsPanelComponentTest {
     }
 
     @Test
+    public void rendersFirstPagedRowWhenViewportFitsRowsButNotFullTablePreamble() {
+        SqlExecutionResult result = SqlExecutionResult.paged(
+            "SQL #1: select * from company limit 6",
+            Arrays.asList("ID", "NAME"),
+            sixRows()
+        );
+
+        ResultsPanelComponent.RenderedPanel rendered = ResultsPanelComponent.success(result).render(6, WorkspaceFocus.RESULTS, 0, 0, 72);
+
+        String text = rendered.lines().toString();
+        assertTrue(text.contains("Page 1/1 | Rows 1-6"));
+        assertTrue(text.contains("| # | ID | NAME"));
+        assertTrue(text.contains("| 1 | 1  | COMPANY_1"));
+        assertTrue(rendered.lines().indexOf("...") > indexOfLineContaining(rendered.lines(), "| 1 | 1  | COMPANY_1"));
+    }
+
+    @Test
+    public void rendersRowsInNarrowWindowsLikeViewportWhenSpaceExists() {
+        SqlExecutionResult result = SqlExecutionResult.paged(
+            "SQL #1: select * from company limit 6",
+            Arrays.asList("ID", "NAME"),
+            sixRows()
+        );
+
+        ResultsPanelComponent.RenderedPanel rendered = ResultsPanelComponent.success(result).render(7, WorkspaceFocus.RESULTS, 0, 0, 44);
+
+        String text = rendered.lines().toString();
+        assertTrue(text.contains("Rows 1-6"));
+        assertTrue(text.contains("COMPANY_1"));
+        assertTrue(rendered.lines().indexOf("...") > indexOfLineContaining(rendered.lines(), "COMPANY_1"));
+        for (String line : rendered.lines()) {
+            assertTrue("line should fit viewport: " + line, line.length() <= 44);
+        }
+    }
+
+    @Test
+    public void showsExplicitMessageWhenViewportIsTooSmallForAnyResultRow() {
+        SqlExecutionResult result = SqlExecutionResult.paged(
+            "SQL #1: select * from company limit 6",
+            Arrays.asList("ID", "NAME"),
+            sixRows()
+        );
+
+        ResultsPanelComponent.RenderedPanel rendered = ResultsPanelComponent.success(result).render(3, WorkspaceFocus.RESULTS, 0, 0, 72);
+
+        assertTrue(rendered.lines().toString().contains("Increase terminal height to show result rows"));
+        assertFalse(rendered.lines().toString().contains("..."));
+    }
+
+    @Test
     public void rendersSqlErrorUsingConsoleFailureTextWithoutFocusMarker() {
         ResultsPanelComponent component = ResultsPanelComponent.failure(new SQLException("invalid table", "42000", 942));
 
@@ -101,6 +151,22 @@ public class ResultsPanelComponentTest {
     }
 
     @Test
+    public void keepsEllipsisAfterVisibleRowsWhenResultIsVerticallyTruncated() {
+        SqlExecutionResult result = SqlExecutionResult.paged(
+            "SQL #1: select * from company limit 6",
+            Arrays.asList("ID", "NAME"),
+            sixRows()
+        );
+
+        ResultsPanelComponent.RenderedPanel rendered = ResultsPanelComponent.success(result).render(8, WorkspaceFocus.RESULTS, 0, 0, 72);
+
+        int firstRow = indexOfLineContaining(rendered.lines(), "COMPANY_1");
+        int ellipsis = rendered.lines().indexOf("...");
+        assertTrue(firstRow > 0);
+        assertTrue(ellipsis > firstRow);
+    }
+
+    @Test
     public void clipsWideResultRowsToHorizontalViewportWithoutWrapping() {
         SqlExecutionResult result = wideResult();
 
@@ -111,6 +177,18 @@ public class ResultsPanelComponentTest {
         }
         assertTrue(rendered.lines().toString().contains("→"));
         assertFalse(rendered.lines().toString().contains("COL_07"));
+    }
+
+    @Test
+    public void clipsWideResultRowsToSuppliedWideViewportInsteadOfOldFixedCap() {
+        SqlExecutionResult result = wideResult();
+
+        ResultsPanelComponent.RenderedPanel rendered = ResultsPanelComponent.success(result).render(10, WorkspaceFocus.RESULTS, 0, 0, 200);
+
+        for (String line : rendered.lines()) {
+            assertTrue("line should fit viewport: " + line, line.length() <= 200);
+        }
+        assertTrue(rendered.lines().toString().contains("COL_10"));
     }
 
     @Test
@@ -133,6 +211,23 @@ public class ResultsPanelComponentTest {
             rows.add(Arrays.asList(String.valueOf(i)));
         }
         return rows;
+    }
+
+    private static java.util.List<java.util.List<String>> sixRows() {
+        java.util.List<java.util.List<String>> rows = new java.util.ArrayList<java.util.List<String>>();
+        for (int i = 1; i <= 6; i++) {
+            rows.add(Arrays.asList(String.valueOf(i), "COMPANY_" + i));
+        }
+        return rows;
+    }
+
+    private static int indexOfLineContaining(java.util.List<String> lines, String value) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (lines.get(i).contains(value)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static SqlExecutionResult wideResult() {

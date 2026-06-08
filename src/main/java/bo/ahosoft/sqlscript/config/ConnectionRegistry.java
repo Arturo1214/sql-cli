@@ -34,6 +34,7 @@ public final class ConnectionRegistry {
 
         Properties properties = new Properties();
         properties.setProperty("type", config.databaseType().name());
+        properties.setProperty("environment", config.environment().name());
         properties.setProperty("jdbcUrl", config.jdbcUrl());
         properties.setProperty("username", config.username());
         properties.setProperty("password", secretStore.protect(config.password()));
@@ -60,6 +61,7 @@ public final class ConnectionRegistry {
         String password = secretStore.isProtectedValue(protectedPassword) ? secretStore.reveal(protectedPassword) : protectedPassword;
         return new ConnectionConfig(
             DatabaseType.fromStoredValue(properties.getProperty("type")),
+            ConnectionEnvironment.fromStoredValue(properties.getProperty("environment")),
             required(properties, "jdbcUrl"),
             required(properties, "username"),
             password,
@@ -83,6 +85,7 @@ public final class ConnectionRegistry {
                 new ConnectionSummary(
                     name,
                     DatabaseType.fromStoredValue(properties.getProperty("type")),
+                    ConnectionEnvironment.fromStoredValue(properties.getProperty("environment")),
                     required(properties, "jdbcUrl"),
                     required(properties, "username"),
                     ConfigStore.parseSchemas(properties.getProperty("schemas"))
@@ -143,17 +146,30 @@ public final class ConnectionRegistry {
 
         private final String name;
         private final DatabaseType databaseType;
+        private final ConnectionEnvironment environment;
         private final String jdbcUrl;
         private final String username;
         private final List<String> schemas;
 
         public ConnectionSummary(String name, String jdbcUrl, String username) {
-            this(name, DatabaseType.ORACLE, jdbcUrl, username, Collections.<String>emptyList());
+            this(name, DatabaseType.ORACLE, ConnectionEnvironment.DEV, jdbcUrl, username, Collections.<String>emptyList());
         }
 
         public ConnectionSummary(String name, DatabaseType databaseType, String jdbcUrl, String username, List<String> schemas) {
+            this(name, databaseType, ConnectionEnvironment.DEV, jdbcUrl, username, schemas);
+        }
+
+        public ConnectionSummary(
+            String name,
+            DatabaseType databaseType,
+            ConnectionEnvironment environment,
+            String jdbcUrl,
+            String username,
+            List<String> schemas
+        ) {
             this.name = name;
             this.databaseType = databaseType == null ? DatabaseType.ORACLE : databaseType;
+            this.environment = environment == null ? ConnectionEnvironment.DEV : environment;
             this.jdbcUrl = jdbcUrl;
             this.username = username;
             this.schemas = Collections.unmodifiableList(new ArrayList<>(schemas));
@@ -169,6 +185,10 @@ public final class ConnectionRegistry {
 
         public DatabaseType databaseType() {
             return databaseType;
+        }
+
+        public ConnectionEnvironment environment() {
+            return environment;
         }
 
         public String username() {
@@ -187,7 +207,7 @@ public final class ConnectionRegistry {
         @Override
         public String toString() {
             String schemaSummary = schemas.isEmpty() ? "" : ", schemas=" + ConfigStore.joinSchemas(schemas);
-            return name + " -> " + jdbcUrl + " (" + username + ", " + databaseType + schemaSummary + ")";
+            return name + " -> " + jdbcUrl + " (" + username + ", " + databaseType + ", " + environment + schemaSummary + ")";
         }
     }
 }

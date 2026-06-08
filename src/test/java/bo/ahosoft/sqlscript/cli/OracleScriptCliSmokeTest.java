@@ -261,7 +261,49 @@ public class OracleScriptCliSmokeTest {
         assertEquals(result.output, 0, result.exitCode);
         Properties properties = load(configFile);
         assertEquals("ORACLE", properties.getProperty("type"));
+        assertEquals("DEV", properties.getProperty("environment"));
         assertFalse(properties.containsKey("schemas"));
+    }
+
+    @Test
+    public void initPersistsEnvironmentFlag() throws Exception {
+        File configFile = File.createTempFile("oracle-script-cli-prod", ".properties");
+        configFile.delete();
+
+        ProcessResult result = runCli(
+            "init",
+            "jdbc:oracle:thin:@prod:1521/PROD",
+            "support",
+            "secret",
+            "--environment",
+            "prod",
+            "--config",
+            configFile.getAbsolutePath()
+        );
+
+        assertEquals(result.output, 0, result.exitCode);
+        assertEquals("PROD", load(configFile).getProperty("environment"));
+        assertTrue(result.output.contains("Environment: PROD"));
+    }
+
+    @Test
+    public void initRejectsInvalidEnvironmentFlagWithAllowedValues() throws Exception {
+        File configFile = File.createTempFile("oracle-script-cli-invalid-env", ".properties");
+        configFile.delete();
+
+        ProcessResult result = runCli(
+            "init",
+            "jdbc:oracle:thin:@localhost:1521/XEPDB1",
+            "support",
+            "secret",
+            "--environment",
+            "sandbox",
+            "--config",
+            configFile.getAbsolutePath()
+        );
+
+        assertEquals(result.output, 2, result.exitCode);
+        assertTrue(result.output.contains("Invalid environment: sandbox. Allowed values: DEV, QA, STAGING, PROD"));
     }
 
     @Test
@@ -304,6 +346,69 @@ public class OracleScriptCliSmokeTest {
         assertEquals(confirmed.output, 0, confirmed.exitCode);
         assertTrue(confirmed.output.contains("delete from customers"));
         assertFalse(confirmed.output.contains("pg-secret"));
+    }
+
+    @Test
+    public void unsafeBypassesNonProdDangerousSqlButProdRequiresConnectionName() throws Exception {
+        File qaConfig = File.createTempFile("oracle-script-cli-qa", ".properties");
+        File prodConfig = File.createTempFile("oracle-script-cli-prod", ".properties");
+        ConfigStore.save(
+            qaConfig,
+            new ConnectionConfig(
+                DatabaseType.ORACLE,
+                ConnectionEnvironment.QA,
+                "jdbc:oracle:thin:@qa:1521/QA",
+                "qa",
+                "secret",
+                Arrays.<String>asList()
+            )
+        );
+        ConfigStore.save(
+            prodConfig,
+            new ConnectionConfig(
+                DatabaseType.ORACLE,
+                ConnectionEnvironment.PROD,
+                "jdbc:oracle:thin:@prod:1521/PROD",
+                "support",
+                "secret",
+                Arrays.<String>asList()
+            )
+        );
+
+        ProcessResult qaUnsafe = runCli(
+            "run-current",
+            "--buffer",
+            "delete from users",
+            "--dry-run",
+            "--unsafe",
+            "--config",
+            qaConfig.getAbsolutePath()
+        );
+        ProcessResult prodBlocked = runCli(
+            "run-current",
+            "--buffer",
+            "delete from users",
+            "--dry-run",
+            "--unsafe",
+            "--config",
+            prodConfig.getAbsolutePath()
+        );
+        ProcessResult prodConfirmed = runCli(
+            "run-current",
+            "--buffer",
+            "delete from users",
+            "--dry-run",
+            "--unsafe",
+            "--confirm-risk",
+            prodConfig.getName(),
+            "--config",
+            prodConfig.getAbsolutePath()
+        );
+
+        assertEquals(0, qaUnsafe.exitCode);
+        assertEquals(2, prodBlocked.exitCode);
+        assertTrue(prodBlocked.output.contains("--confirm-risk " + prodConfig.getName()));
+        assertEquals(prodConfirmed.output, 0, prodConfirmed.exitCode);
     }
 
     private static Properties load(File file) throws Exception {

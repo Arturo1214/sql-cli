@@ -56,4 +56,31 @@ public class SqlStatementSelectorTest {
 
         assertEquals("select * from users", statement);
     }
+
+    @Test
+    public void selectsStatementContainingCursorAcrossMultipleLines() {
+        String buffer = "select *\nfrom users;\nselect *\nfrom orders;";
+
+        String statement = SqlStatementSelector.currentStatement(buffer, buffer.indexOf("orders"));
+
+        assertEquals("select *\nfrom orders", statement);
+    }
+
+    @Test
+    public void selectsPreviousStatementWhenCursorIsWhitespaceAfterSemicolon() {
+        String buffer = "select * from users;\n\nselect * from orders;";
+
+        String statement = SqlStatementSelector.currentStatement(buffer, buffer.indexOf("select * from orders") - 1);
+
+        assertEquals("select * from users", statement);
+    }
+
+    @Test
+    public void selectsNextStatementWhenCursorIsWhitespaceBeforeStatementWithoutPreviousSemicolonContext() {
+        String buffer = "\n\nselect * from users;";
+
+        String statement = SqlStatementSelector.currentStatement(buffer, 1);
+
+        assertEquals("select * from users", statement);
+    }
 }

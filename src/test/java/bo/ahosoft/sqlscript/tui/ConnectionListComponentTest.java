@@ -40,8 +40,8 @@ public class ConnectionListComponentTest {
         ConnectionListComponent.RenderedPanel rendered = component.render(99, 1, WorkspaceFocus.CONNECTIONS);
 
         assertTrue(rendered.lines().contains("Connections *"));
-        assertTrue(rendered.lines().contains("  qa-oracle [ORACLE]"));
-        assertTrue(rendered.lines().contains("* reporting-postgres [POSTGRESQL] schema=public"));
+        assertTrue(rendered.lines().contains("  [DEV] qa-oracle [ORACLE]"));
+        assertTrue(rendered.lines().contains("* [DEV] reporting-postgres [POSTGRESQL] schema=public"));
         assertTrue(rendered.lines().contains("Actions"));
         assertFalse(rendered.lines().contains("  Tables"));
         assertFalse(rendered.lines().contains("> Tables"));
@@ -53,6 +53,29 @@ public class ConnectionListComponentTest {
         assertEquals("reporting-postgres", rendered.active().name());
         assertEquals(4, rendered.rowCount());
         assertEquals(Arrays.asList("New Oracle connection", "New PostgreSQL connection"), rendered.actionLabels());
+    }
+
+    @Test
+    public void rendersProdConnectionsWithVisibleWarningMarker() {
+        ConnectionListComponent component = new ConnectionListComponent(
+            Collections.singletonList(
+                new ConnectionListComponent.ConnectionItem(
+                    "billing-db",
+                    new ConnectionConfig(
+                        DatabaseType.ORACLE,
+                        ConnectionEnvironment.PROD,
+                        "jdbc:oracle:thin:@prod:1521/PROD",
+                        "support",
+                        "secret",
+                        Collections.<String>emptyList()
+                    )
+                )
+            )
+        );
+
+        ConnectionListComponent.RenderedPanel rendered = component.render(0, 0, WorkspaceFocus.CONNECTIONS);
+
+        assertTrue(rendered.lines().contains("* !! PROD !! [PROD] billing-db [ORACLE]"));
     }
 
     @Test
@@ -117,7 +140,7 @@ public class ConnectionListComponentTest {
         ConnectionListComponent.RenderedPanel rendered = component.render(25, -1, WorkspaceFocus.CONNECTIONS, 8, 32);
 
         assertEquals(8, rendered.lines().size());
-        assertTrue(rendered.lines().toString().contains("> very-long-reporting"));
+        assertTrue(rendered.lines().toString().contains("> [DEV] very-long-reporting"));
         assertTrue(rendered.selected().name().endsWith("26"));
         for (String line : rendered.lines()) {
             assertTrue("line should fit menu viewport: " + line, line.length() <= 32);

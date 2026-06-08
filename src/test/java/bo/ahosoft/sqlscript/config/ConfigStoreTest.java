@@ -43,6 +43,26 @@ public class ConfigStoreTest {
         ConnectionConfig loaded = ConfigStore.load(file);
         assertEquals(DatabaseType.POSTGRESQL, loaded.databaseType());
         assertEquals(Arrays.asList("app", "audit"), loaded.schemas());
+        assertEquals(ConnectionEnvironment.DEV, loaded.environment());
+    }
+
+    @Test
+    public void savesAndLoadsConnectionEnvironment() throws Exception {
+        File file = temporaryFolder.newFile("prod.properties");
+        ConnectionConfig config = new ConnectionConfig(
+            DatabaseType.ORACLE,
+            ConnectionEnvironment.PROD,
+            "jdbc:oracle:thin:@prod:1521/PROD",
+            "support",
+            "secret",
+            Arrays.<String>asList()
+        );
+
+        ConfigStore.save(file, config);
+
+        String stored = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+        assertTrue(stored.contains("environment=PROD"));
+        assertEquals(ConnectionEnvironment.PROD, ConfigStore.load(file).environment());
     }
 
     @Test
@@ -57,7 +77,24 @@ public class ConfigStoreTest {
         ConnectionConfig loaded = ConfigStore.load(file);
 
         assertEquals(DatabaseType.ORACLE, loaded.databaseType());
+        assertEquals(ConnectionEnvironment.DEV, loaded.environment());
         assertTrue(loaded.schemas().isEmpty());
+    }
+
+    @Test
+    public void invalidStoredEnvironmentFallsBackToDev() throws Exception {
+        File file = temporaryFolder.newFile("invalid-environment.properties");
+        Properties properties = new Properties();
+        properties.setProperty("type", "ORACLE");
+        properties.setProperty("environment", "sandbox");
+        properties.setProperty("jdbcUrl", "jdbc:oracle:thin:@legacy:1521/QA");
+        properties.setProperty("username", "legacy_user");
+        properties.setProperty("password", "legacy-secret");
+        properties.store(Files.newOutputStream(file.toPath()), "invalid environment");
+
+        ConnectionConfig loaded = ConfigStore.load(file);
+
+        assertEquals(ConnectionEnvironment.DEV, loaded.environment());
     }
 
     @Test

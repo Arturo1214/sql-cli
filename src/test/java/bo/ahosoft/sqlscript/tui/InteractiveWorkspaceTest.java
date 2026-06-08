@@ -229,8 +229,8 @@ public class InteractiveWorkspaceTest {
 
         assertEquals("dev-docs", session.activeConnectionName());
         assertEquals("dev-docs", session.dashboardState().activeConnectionName());
-        assertTrue(rendered.connectionLines().contains("* dev-docs [POSTGRESQL] schema=public"));
-        assertTrue(rendered.statusLine().contains("Active: dev-docs [POSTGRESQL]"));
+        assertTrue(rendered.connectionLines().contains("* [DEV] dev-docs [POSTGRESQL] schema=public"));
+        assertTrue(rendered.statusLine().contains("Active: dev-docs [DEV] [POSTGRESQL]"));
     }
 
     @Test
@@ -248,7 +248,7 @@ public class InteractiveWorkspaceTest {
         ).run();
 
         String rendered = text(output);
-        assertTrue(rendered.contains("* local [ORACLE]"));
+        assertTrue(rendered.contains("* [DEV] local [ORACLE]"));
         assertTrue(rendered.contains("SQL Buffer:"));
         assertTrue(rendered.contains("select * from users; select * from orders"));
         assertTrue(rendered.contains("Results:"));
@@ -272,8 +272,27 @@ public class InteractiveWorkspaceTest {
 
         String rendered = text(output);
         assertEquals("delete from users", executor.statement);
-        assertTrue(rendered.contains("Safe mode blocked a destructive SQL statement"));
+        assertTrue(rendered.contains("Safety mode blocked a dangerous SQL statement"));
         assertTrue(rendered.contains("RESULT: delete from users"));
+    }
+
+    @Test
+    public void tuiBlocksDangerousSqlWithLocalizedMessageButAllowsMetadataCommands() throws Exception {
+        ConnectionRegistry registry = registry();
+        registry.save("local", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "secret"));
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = session(registry, executor);
+        session.useConnection("local");
+
+        String blocked = session.runCurrentBuffer("delete from users", 0);
+        String metadata = session.runCurrentBuffer("tables", 0);
+
+        assertTrue(blocked.contains("Safety mode blocked a dangerous SQL statement"));
+        assertTrue(
+            new TuiMessages(TuiLanguage.SPANISH).localizeResultText(blocked).contains("Modo seguro bloqueo una sentencia SQL peligrosa")
+        );
+        assertTrue(metadata.contains("RESULT:"));
+        assertTrue(executor.statement.toLowerCase().contains("select"));
     }
 
     @Test

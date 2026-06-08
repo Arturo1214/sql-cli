@@ -35,6 +35,7 @@ public final class WorkspaceViewModel {
         }
         String activeName = activeItem == null ? activeConnectionName : activeItem.name();
         DatabaseType activeType = activeItem == null ? null : activeItem.config().databaseType();
+        ConnectionEnvironment activeEnvironment = activeItem == null ? null : activeItem.config().environment();
         ConnectionListComponent.RenderedPanel connectionPanel = connections.render(
             state.selectedConnectionIndex(),
             activeIndex,
@@ -68,24 +69,32 @@ public final class WorkspaceViewModel {
         helpLines.addAll(help.renderHelpOverlay(state.helpVisible(), state.focus(), state.creationFormType()).lines());
 
         return new RenderedWorkspace(
-            compact ? "Compact workspace" : activeHeader(activeName, activeType),
+            compact ? "Compact workspace" : activeHeader(activeName, activeEnvironment, activeType),
             compact,
             connectionPanel.lines(),
             editorLines,
             editorRenderModel,
             completionPopupLines(editorRenderModel.completionCandidates()),
             results.render(compact ? 3 : Math.max(3, height / 4), state.focus()).lines(),
-            help.statusBar(state.focus(), activeName, activeType, editor.executionReadinessMessage()),
+            help.statusBar(state.focus(), activeName, activeEnvironment, activeType, editor.executionReadinessMessage()),
             helpLines
         );
     }
 
-    private static String activeHeader(String activeName, DatabaseType activeType) {
+    private static String activeHeader(String activeName, ConnectionEnvironment environment, DatabaseType activeType) {
         String safeName = activeName == null || activeName.trim().isEmpty() || "none".equals(activeName) ? "none" : activeName;
         if (activeType == null || "none".equals(safeName)) {
             return "Workspace | Active: " + safeName;
         }
-        return "Workspace | Active: " + safeName + " [" + activeType + "]";
+        return (
+            "Workspace | Active: " +
+            safeName +
+            " [" +
+            (environment == null ? ConnectionEnvironment.DEV : environment) +
+            "] [" +
+            activeType +
+            "]"
+        );
     }
 
     private static List<String> completionPopupLines(List<CompletionCandidate> candidates) {

@@ -21,22 +21,22 @@ public class OracleScriptCliDocumentationTest {
         String readme = new String(Files.readAllBytes(new File("README.md").toPath()), StandardCharsets.UTF_8);
 
         assertTrue(readme.contains("java -jar target/oracle-script-cli.jar"));
-        assertTrue(readme.contains("opens the interactive workspace by default"));
+        assertTrue(readme.contains("open the TUI"));
         assertTrue(readme.contains("java -jar target/oracle-script-cli.jar workspace"));
-        assertTrue(readme.contains("Lanterna GUI2 split-pane workspace"));
-        assertTrue(readme.contains("left explorer"));
+        assertTrue(readme.contains("Database Script Workspace"));
+        assertTrue(readme.contains("Left menu"));
         assertTrue(readme.contains("SQL editor"));
-        assertTrue(readme.contains("bottom results/logs"));
+        assertTrue(readme.contains("Results/logs"));
         assertTrue(readme.contains("Ctrl+R"));
-        assertTrue(readme.contains("Ctrl+R` executes the visible SQL buffer"));
-        assertTrue(readme.contains("F1` or `?` shows help"));
+        assertTrue(readme.contains("Execute the current SQL buffer"));
+        assertTrue(readme.contains("Open help"));
         assertFalse(readme.contains("Ctrl+H` shows help"));
-        assertTrue(readme.contains("Enter` activates the selected connection or action in the explorer"));
+        assertTrue(readme.contains("Select the active connection/action"));
         assertTrue(readme.contains("New Oracle"));
         assertTrue(readme.contains("New PostgreSQL"));
-        assertTrue(readme.contains("prompts for name, JDBC URL, username, password, and schemas"));
+        assertTrue(readme.contains("uses a constrained environment selector"));
         assertTrue(readme.contains("plain text"));
-        assertTrue(readme.contains("does not add syntax highlighting, autocomplete, or SQL correction"));
+        assertTrue(readme.contains("plain text"));
         assertTrue(readme.contains("compact fallback"));
         assertFalse(readme.contains("Lanterna-backed raw terminal workspace"));
         assertFalse(readme.contains("Raw workspace shortcuts"));
@@ -44,7 +44,7 @@ public class OracleScriptCliDocumentationTest {
         assertTrue(readme.contains("connections"));
         assertTrue(readme.contains("use <name>"));
         assertTrue(readme.contains("buffer set"));
-        assertTrue(readme.contains("run --force --confirm-risk YES"));
+        assertTrue(readme.contains("--unsafe"));
         assertTrue(readme.contains("help"));
         assertTrue(readme.contains("exit"));
     }

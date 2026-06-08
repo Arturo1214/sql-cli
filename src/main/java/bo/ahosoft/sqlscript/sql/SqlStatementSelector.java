@@ -47,6 +47,13 @@ public final class SqlStatementSelector {
             selectedEnd = buffer.length();
         }
 
+        if (cursor < firstNonWhitespace(buffer, selectedStart, selectedEnd)) {
+            String previous = previousStatement(buffer, selectedStart);
+            if (!previous.isEmpty()) {
+                return previous;
+            }
+        }
+
         String statement = trimStatement(buffer, selectedStart, selectedEnd);
         if (!statement.isEmpty()) {
             return statement;
@@ -90,6 +97,19 @@ public final class SqlStatementSelector {
             statement = statement.substring(0, statement.length() - 1).trim();
         }
         return statement;
+    }
+
+    private static int firstNonWhitespace(String buffer, int start, int end) {
+        if (start < 0 || end < start) {
+            return 0;
+        }
+        int safeEnd = Math.min(end, buffer.length());
+        for (int i = Math.max(0, start); i < safeEnd; i++) {
+            if (!Character.isWhitespace(buffer.charAt(i))) {
+                return i;
+            }
+        }
+        return safeEnd;
     }
 
     private static int clamp(int value, int min, int max) {

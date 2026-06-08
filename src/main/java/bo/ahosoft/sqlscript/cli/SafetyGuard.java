@@ -14,17 +14,46 @@ public final class SafetyGuard {
     private SafetyGuard() {}
 
     public static void requireSafe(String script, boolean force, String confirmRisk) {
+        requireSafe(script, ConnectionEnvironment.DEV, null, force, false, confirmRisk);
+    }
+
+    public static void requireSafe(
+        String script,
+        ConnectionEnvironment environment,
+        String connectionName,
+        boolean force,
+        boolean unsafe,
+        String confirmRisk
+    ) {
         if (!isDestructive(script)) {
             return;
         }
-        if (!force) {
+        ConnectionEnvironment effectiveEnvironment = environment == null ? ConnectionEnvironment.DEV : environment;
+        String confirmationTarget = effectiveEnvironment.isProduction() ? safeConnectionName(connectionName) : REQUIRED_CONFIRMATION;
+        if (unsafe) {
+            if (!effectiveEnvironment.isProduction() || confirmationTarget.equals(confirmRisk)) {
+                return;
+            }
             throw new IllegalArgumentException(
-                "Safe mode blocked a destructive SQL statement. Re-run with --force and --confirm-risk YES only if you intend to continue."
+                "Safety mode blocked a dangerous SQL statement in PROD. Re-run with --unsafe --confirm-risk " +
+                confirmationTarget +
+                " only if you intend to continue."
             );
         }
-        if (!REQUIRED_CONFIRMATION.equals(confirmRisk)) {
-            throw new IllegalArgumentException("Destructive SQL requires typed confirmation: --confirm-risk YES");
+        if (!force) {
+            throw new IllegalArgumentException(
+                "Safety mode blocked a dangerous SQL statement. Re-run with --unsafe for non-PROD, or --unsafe --confirm-risk " +
+                confirmationTarget +
+                " for PROD, only if you intend to continue."
+            );
         }
+        if (!confirmationTarget.equals(confirmRisk)) {
+            throw new IllegalArgumentException("Dangerous SQL requires typed confirmation: --confirm-risk " + confirmationTarget);
+        }
+    }
+
+    public static boolean isAllowedByDefault(String script) {
+        return !isDestructive(script);
     }
 
     public static boolean isDestructive(String script) {
@@ -33,6 +62,10 @@ public final class SafetyGuard {
         }
         String normalized = stripComments(script).trim().toLowerCase();
         return normalized.matches("(?s).*(^|[;\\s])(update|delete|insert|merge|drop|truncate|alter|create|grant|revoke)\\s+.*");
+    }
+
+    private static String safeConnectionName(String connectionName) {
+        return connectionName == null || connectionName.trim().isEmpty() ? REQUIRED_CONFIRMATION : connectionName.trim();
     }
 
     private static String stripComments(String script) {

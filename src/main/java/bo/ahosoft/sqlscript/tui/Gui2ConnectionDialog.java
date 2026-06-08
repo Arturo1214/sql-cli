@@ -38,6 +38,7 @@ public final class Gui2ConnectionDialog {
             ConnectionConfig config = session.createConnectionFromAction(
                 trim(request.name()),
                 request.databaseType(),
+                request.environment(),
                 trim(request.jdbcUrl()),
                 trim(request.username()),
                 request.password(),
@@ -57,11 +58,12 @@ public final class Gui2ConnectionDialog {
     public static final class Form {
 
         private static final List<String> FIELD_LABELS = Collections.unmodifiableList(
-            Arrays.asList("Name", "JDBC URL", "Username", "Password", "Schemas")
+            Arrays.asList("Name", "Environment", "JDBC URL", "Username", "Password", "Schemas")
         );
 
         private final Gui2ConnectionDialog dialog;
         private final DatabaseType databaseType;
+        private ConnectionEnvironment environment = ConnectionEnvironment.DEV;
         private String name;
         private String jdbcUrl;
         private String username;
@@ -80,6 +82,10 @@ public final class Gui2ConnectionDialog {
             return databaseType;
         }
 
+        public ConnectionEnvironment environment() {
+            return environment;
+        }
+
         public List<String> fieldLabels() {
             return FIELD_LABELS;
         }
@@ -90,6 +96,11 @@ public final class Gui2ConnectionDialog {
 
         public Form name(String value) {
             this.name = value;
+            return this;
+        }
+
+        public Form environment(ConnectionEnvironment value) {
+            this.environment = value == null ? ConnectionEnvironment.DEV : value;
             return this;
         }
 
@@ -119,7 +130,9 @@ public final class Gui2ConnectionDialog {
         }
 
         public Result save() {
-            Result result = dialog.submit(new Request(databaseType, name, jdbcUrl, username, password, selectedSchemas, availableSchemas));
+            Result result = dialog.submit(
+                new Request(databaseType, environment, name, jdbcUrl, username, password, selectedSchemas, availableSchemas)
+            );
             feedback = result.message();
             return result;
         }
@@ -175,6 +188,7 @@ public final class Gui2ConnectionDialog {
     public static final class Request {
 
         private final DatabaseType databaseType;
+        private final ConnectionEnvironment environment;
         private final String name;
         private final String jdbcUrl;
         private final String username;
@@ -191,7 +205,21 @@ public final class Gui2ConnectionDialog {
             List<String> selectedSchemas,
             List<String> availableSchemas
         ) {
+            this(databaseType, ConnectionEnvironment.DEV, name, jdbcUrl, username, password, selectedSchemas, availableSchemas);
+        }
+
+        public Request(
+            DatabaseType databaseType,
+            ConnectionEnvironment environment,
+            String name,
+            String jdbcUrl,
+            String username,
+            String password,
+            List<String> selectedSchemas,
+            List<String> availableSchemas
+        ) {
             this.databaseType = databaseType == null ? DatabaseType.ORACLE : databaseType;
+            this.environment = environment == null ? ConnectionEnvironment.DEV : environment;
             this.name = name;
             this.jdbcUrl = jdbcUrl;
             this.username = username;
@@ -202,6 +230,10 @@ public final class Gui2ConnectionDialog {
 
         public DatabaseType databaseType() {
             return databaseType;
+        }
+
+        public ConnectionEnvironment environment() {
+            return environment;
         }
 
         public String name() {

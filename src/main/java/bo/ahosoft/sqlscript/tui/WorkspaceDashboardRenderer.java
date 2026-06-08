@@ -22,13 +22,20 @@ public final class WorkspaceDashboardRenderer {
     }
 
     public String render(DashboardState state, TerminalCapabilities capabilities) {
+        TerminalCapabilities safeCapabilities = capabilities == null
+            ? new TerminalCapabilities(false, new TerminalSize(DEFAULT_WIDTH, DEFAULT_HEIGHT))
+            : capabilities;
+        TerminalSize size = safeCapabilities.size();
+        if (safeCapabilities.ansi() && size.width() >= MIN_SPLIT_WIDTH && size.height() >= MIN_SPLIT_HEIGHT) {
+            return renderSplit(state, size);
+        }
         return renderCompact(state);
     }
 
     private String renderCompact(DashboardState state) {
         StringBuilder output = new StringBuilder();
         output.append("== Interactive Workspace (Compact) ==").append(System.lineSeparator());
-        output.append("Active connection: ").append(valueOrNone(state.activeConnectionName())).append(System.lineSeparator());
+        output.append("Active connection: ").append(activeConnectionLabel(state)).append(System.lineSeparator());
         output.append("Schemas: ").append(joinOrPlaceholder(state.schemas(), "none")).append(System.lineSeparator());
         output.append("Connections:").append(System.lineSeparator());
         appendConnections(output, state.connections());
@@ -58,7 +65,7 @@ public final class WorkspaceDashboardRenderer {
     private String renderSplit(DashboardState state, TerminalSize size) {
         int width = size.width();
         int leftWidth = Math.max(24, Math.min(30, width / 3));
-        int rightWidth = width - leftWidth - 1;
+        int rightWidth = width - leftWidth + 1;
         int editorHeight = Math.max(8, size.height() - 13);
         StringBuilder output = new StringBuilder();
         output.append("\u001B[2J\u001B[H");
@@ -143,6 +150,10 @@ public final class WorkspaceDashboardRenderer {
         for (ConnectionSummary connection : connections) {
             lines.add(
                 (connection.active() ? "* " : "  ") +
+                prodMarker(connection.environment()) +
+                "[" +
+                valueOrDefault(connection.environment(), "DEV") +
+                "] " +
                 valueOrNone(connection.name()) +
                 " [" +
                 valueOrDefault(connection.databaseType(), "unknown") +
@@ -206,6 +217,23 @@ public final class WorkspaceDashboardRenderer {
 
     private static String valueOrNone(String value) {
         return value == null || value.trim().isEmpty() ? "none" : value;
+    }
+
+    private static String activeConnectionLabel(DashboardState state) {
+        String activeName = valueOrNone(state.activeConnectionName());
+        if ("none".equals(activeName)) {
+            return activeName;
+        }
+        for (ConnectionSummary connection : state.connections()) {
+            if (connection.active() && activeName.equals(connection.name())) {
+                return activeName + " [" + valueOrDefault(connection.environment(), "DEV") + "]";
+            }
+        }
+        return activeName;
+    }
+
+    private static String prodMarker(String environment) {
+        return "PROD".equalsIgnoreCase(environment) ? "!! PROD !! " : "";
     }
 
     private static String valueOrDefault(String value, String fallback) {
@@ -332,11 +360,17 @@ public final class WorkspaceDashboardRenderer {
 
         private final String name;
         private final String databaseType;
+        private final String environment;
         private final boolean active;
 
         public ConnectionSummary(String name, String databaseType, boolean active) {
+            this(name, databaseType, "DEV", active);
+        }
+
+        public ConnectionSummary(String name, String databaseType, String environment, boolean active) {
             this.name = name;
             this.databaseType = databaseType;
+            this.environment = environment == null || environment.trim().isEmpty() ? "DEV" : environment;
             this.active = active;
         }
 
@@ -346,6 +380,10 @@ public final class WorkspaceDashboardRenderer {
 
         public String databaseType() {
             return databaseType;
+        }
+
+        public String environment() {
+            return environment;
         }
 
         public boolean active() {

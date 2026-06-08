@@ -17,12 +17,26 @@ public final class HelpStatusComponent {
     }
 
     public String statusBar(WorkspaceFocus focus, String connectionName, DatabaseType databaseType, String executionStatus) {
+        return statusBar(focus, connectionName, null, databaseType, executionStatus);
+    }
+
+    public String statusBar(
+        WorkspaceFocus focus,
+        String connectionName,
+        ConnectionEnvironment environment,
+        DatabaseType databaseType,
+        String executionStatus
+    ) {
         String safeConnection = connectionName == null || connectionName.trim().isEmpty() ? "none" : connectionName;
         String safeStatus = executionStatus == null || executionStatus.trim().isEmpty() ? "Ready" : executionStatus;
         String activeContext = databaseType == null || "none".equals(safeConnection)
             ? safeConnection
-            : safeConnection + " [" + databaseType + "]";
+            : safeConnection + environmentLabel(environment) + " [" + databaseType + "]";
         return "Focus: " + focus + " | Active: " + activeContext + " | " + safeStatus + " | Ctrl+R Run | F1/? Help | Esc Exit";
+    }
+
+    private static String environmentLabel(ConnectionEnvironment environment) {
+        return environment == null ? "" : " [" + environment + "]";
     }
 
     public RenderedHelp renderHelpOverlay(boolean visible, WorkspaceFocus focus) {

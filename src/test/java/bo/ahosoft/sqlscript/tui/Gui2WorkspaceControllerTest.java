@@ -14,6 +14,7 @@ import bo.ahosoft.sqlscript.tui.*;
 import com.googlecode.lanterna.graphics.Theme;
 import com.googlecode.lanterna.gui2.BasePane;
 import com.googlecode.lanterna.gui2.Button;
+import com.googlecode.lanterna.gui2.ComboBox;
 import com.googlecode.lanterna.gui2.Component;
 import com.googlecode.lanterna.gui2.Container;
 import com.googlecode.lanterna.gui2.Interactable;
@@ -51,18 +52,18 @@ public class Gui2WorkspaceControllerTest {
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
-        assertEquals("* local [ORACLE]", components.explorer().getItemAt(0).toString());
-        assertEquals("  reporting [POSTGRESQL]", components.explorer().getItemAt(1).toString());
+        assertEquals("* [DEV] local [ORACLE]", components.explorer().getItemAt(0).toString());
+        assertEquals("  [DEV] reporting [POSTGRESQL]", components.explorer().getItemAt(1).toString());
 
         components.explorer().setSelectedIndex(1);
         controller.handleEnter();
 
         assertEquals("reporting", session.activeConnectionName());
-        assertEquals("  local [ORACLE]", components.explorer().getItemAt(0).toString());
-        assertEquals("* reporting [POSTGRESQL]", components.explorer().getItemAt(1).toString());
+        assertEquals("  [DEV] local [ORACLE]", components.explorer().getItemAt(0).toString());
+        assertEquals("* [DEV] reporting [POSTGRESQL]", components.explorer().getItemAt(1).toString());
         assertEquals("editor", controller.focusName());
         assertTrue(components.sqlEditor().isFocused());
-        assertEquals("Status: Active connection: reporting | Active: reporting", components.statusText().getText());
+        assertEquals("Status: Active connection: reporting | Active: reporting [DEV]", components.statusText().getText());
     }
 
     @Test
@@ -94,7 +95,9 @@ public class Gui2WorkspaceControllerTest {
         assertNotNull(textGUI.lastAddedWindow);
         assertEquals("New Oracle connection", textGUI.lastAddedWindow.getTitle());
         assertEquals(5, countComponents(textGUI.lastAddedWindow.getComponent(), TextBox.class));
+        assertEquals(1, countComponents(textGUI.lastAddedWindow.getComponent(), ComboBox.class));
         assertTrue(hasLabel(textGUI.lastAddedWindow.getComponent(), "Name"));
+        assertTrue(hasLabel(textGUI.lastAddedWindow.getComponent(), "Environment"));
         assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Save"));
         assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Cancel"));
         assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Back"));
@@ -105,6 +108,25 @@ public class Gui2WorkspaceControllerTest {
 
         assertEquals("New PostgreSQL connection", textGUI.lastAddedWindow.getTitle());
         assertEquals(DatabaseType.POSTGRESQL, controller.activeConnectionDialog().databaseType());
+    }
+
+    @Test
+    public void connectionDialogEnvironmentIsConstrainedAndDefaultsToDev() throws Exception {
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        controller.openConnectionDialog(DatabaseType.ORACLE);
+
+        ComboBox<?> environment = findComponent(textGUI.lastAddedWindow.getComponent(), ComboBox.class);
+        assertNotNull(environment);
+        assertEquals(ConnectionEnvironment.DEV, environment.getSelectedItem());
+        assertEquals(4, environment.getItemCount());
+        assertEquals(ConnectionEnvironment.DEV, environment.getItem(0));
+        assertEquals(ConnectionEnvironment.QA, environment.getItem(1));
+        assertEquals(ConnectionEnvironment.STAGING, environment.getItem(2));
+        assertEquals(ConnectionEnvironment.PROD, environment.getItem(3));
     }
 
     @Test
@@ -120,7 +142,61 @@ public class Gui2WorkspaceControllerTest {
 
         assertEquals("select * from users", executor.statement);
         assertEquals("RESULT: select * from users", components.resultsText().getText());
-        assertEquals("Status: Query completed | Active: local", components.statusText().getText());
+        assertEquals("Status: Query completed | Active: local [DEV]", components.statusText().getText());
+    }
+
+    @Test
+    public void ctrlRExecutesStatementAtMultilineCaretOffset() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = session(executor);
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.sqlEditor().setText("select *\nfrom users;\nselect *\nfrom orders;");
+        components.sqlEditor().setCaretPosition(5, 3);
+        controller.handleKeyStroke(new KeyStroke('r', true, false));
+
+        assertEquals("select *\nfrom orders", executor.statement);
+    }
+
+    @Test
+    public void editorFocusAcceptsPastedMultilineCharacterEventsAndQuestionMarks() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        controller.handleKeyStroke(new KeyStroke(KeyType.F3));
+        String script = "select *\n  from users\n where note = '?';\n\nselect *\n  from orders;";
+        for (int i = 0; i < script.length(); i++) {
+            char character = script.charAt(i);
+            if (character == '\n') {
+                assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.Enter)));
+            } else {
+                assertTrue(controller.handleKeyStroke(new KeyStroke(character, false, false)));
+            }
+        }
+
+        assertEquals(script, components.sqlEditor().getText());
+        assertEquals(null, controller.activeHelpWindow());
+
+        components.sqlEditor().setCaretPosition(5, 4);
+        controller.handleKeyStroke(new KeyStroke('r', true, false));
+
+        assertEquals("select *\n  from orders", executor.statement);
+    }
+
+    @Test
+    public void f5ExecutesStatementAtMultilineCaretOffset() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = session(executor);
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.sqlEditor().setText("select *\nfrom users;\nselect *\nfrom orders;");
+        components.sqlEditor().setCaretPosition(5, 3);
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+
+        assertEquals("select *\nfrom orders", executor.statement);
     }
 
     @Test
@@ -212,7 +288,7 @@ public class Gui2WorkspaceControllerTest {
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
-        assertEquals("Status: Ready | Active: local", components.statusText().getText());
+        assertEquals("Status: Ready | Active: local [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("F1/? help"));
         assertFalse(components.helpText().getText().contains("Ctrl+H help"));
         assertEquals("Language: English", components.explorer().getItemAt(4).toString());
@@ -220,7 +296,7 @@ public class Gui2WorkspaceControllerTest {
         components.explorer().setSelectedIndex(4);
         controller.handleEnter();
 
-        assertEquals("Estado: Listo | Activa: local", components.statusText().getText());
+        assertEquals("Estado: Listo | Activa: local [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("F1/? ayuda"));
         assertFalse(components.helpText().getText().contains("Ctrl+H ayuda"));
         assertEquals("Idioma: Espanol", components.explorer().getItemAt(4).toString());
@@ -231,7 +307,7 @@ public class Gui2WorkspaceControllerTest {
         components.explorer().setSelectedIndex(4);
         controller.handleEnter();
 
-        assertEquals("Status: Ready | Active: local", components.statusText().getText());
+        assertEquals("Status: Ready | Active: local [DEV]", components.statusText().getText());
         assertEquals("Language: English", components.explorer().getItemAt(4).toString());
         assertTrue(hasLabel(components.root(), "SQL Editor"));
         assertTrue(hasLabel(components.root(), "Results / Logs"));
@@ -306,7 +382,8 @@ public class Gui2WorkspaceControllerTest {
         assertTrue(components.resultsText().getText().contains("Keyboard shortcuts"));
 
         controller.handleKeyStroke(new KeyStroke(KeyType.F3));
-        assertFalse(controller.handleKeyStroke(new KeyStroke('?', false, false)));
+        assertTrue(controller.handleKeyStroke(new KeyStroke('?', false, false)));
+        assertTrue(components.sqlEditor().getText().contains("?"));
 
         components.sqlEditor().setText("select * from users");
         controller.handleKeyStroke(new KeyStroke(KeyType.F5));
@@ -371,8 +448,9 @@ public class Gui2WorkspaceControllerTest {
         controller.resize(new com.googlecode.lanterna.TerminalSize(160, 48));
 
         assertEquals(new com.googlecode.lanterna.TerminalSize(160, 48), components.root().getPreferredSize());
-        assertEquals(new com.googlecode.lanterna.TerminalSize(40, 42), components.explorer().getPreferredSize());
-        assertEquals(new com.googlecode.lanterna.TerminalSize(116, 27), components.sqlEditor().getPreferredSize());
+        assertEquals(160, components.explorer().getPreferredSize().getColumns());
+        assertEquals(160, components.sqlEditor().getPreferredSize().getColumns());
+        assertEquals(160, components.resultsPanel().getPreferredSize().getColumns());
     }
 
     @Test
@@ -407,7 +485,7 @@ public class Gui2WorkspaceControllerTest {
 
         assertEquals(null, executor.statement);
         assertEquals("Nothing is ready to execute", components.resultsText().getText());
-        assertEquals("Status: Nothing is ready to execute | Active: local", components.statusText().getText());
+        assertEquals("Status: Nothing is ready to execute | Active: local [DEV]", components.statusText().getText());
     }
 
     @Test
@@ -431,7 +509,7 @@ public class Gui2WorkspaceControllerTest {
         assertTrue(result.created());
         assertEquals("pg", result.config().username());
         assertEquals(6, components.explorer().getItemCount());
-        assertEquals("Status: Connection saved: analytics | Active: analytics", components.statusText().getText());
+        assertEquals("Status: Connection saved: analytics | Active: analytics [DEV]", components.statusText().getText());
     }
 
     @Test
@@ -557,6 +635,21 @@ public class Gui2WorkspaceControllerTest {
             }
         }
         return false;
+    }
+
+    private static <T extends Component> T findComponent(Component component, Class<T> type) {
+        if (type.isInstance(component)) {
+            return type.cast(component);
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getChildren()) {
+                T found = findComponent(child, type);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     private static final class RecordingTextGUI implements WindowBasedTextGUI {

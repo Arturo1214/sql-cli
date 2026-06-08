@@ -22,16 +22,16 @@ The shaded executable JAR is generated at `target/oracle-script-cli.jar` with ma
 
 ## What You Get
 
-| Area                  | Capability                                                                                    |
-| --------------------- | --------------------------------------------------------------------------------------------- |
-| Interactive workspace | Full-terminal TUI named `Database Script Workspace`.                                          |
-| Databases             | Oracle and PostgreSQL through JDBC.                                                           |
-| Connections           | Saved connections, active connection selection, and new Oracle/PostgreSQL connection wizards. |
-| SQL editor            | Editable SQL buffer with non-destructive diagnostics and suggestions.                         |
-| Metadata              | Database-neutral commands: `tables`, `describe <table>`, `indexes <table>`.                   |
-| Results               | Row numbers, horizontal/vertical scrolling, DB-level pagination for SELECT-like queries.      |
-| i18n                  | English/Spanish in-session UI switching; command keywords remain English.                     |
-| License               | MIT.                                                                                          |
+| Area                  | Capability                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| Interactive workspace | Full-terminal TUI named `Database Script Workspace`.                                        |
+| Databases             | Oracle and PostgreSQL through JDBC.                                                         |
+| Connections           | Saved connections with environment labels, active selection, and Oracle/PostgreSQL wizards. |
+| SQL editor            | Editable SQL buffer with non-destructive diagnostics and suggestions.                       |
+| Metadata              | Database-neutral commands: `tables`, `describe <table>`, `indexes <table>`.                 |
+| Results               | Row numbers, horizontal/vertical scrolling, DB-level pagination for SELECT-like queries.    |
+| i18n                  | English/Spanish in-session UI switching; command keywords remain English.                   |
+| License               | MIT.                                                                                        |
 
 ## Interactive Workspace
 
@@ -55,6 +55,8 @@ The workspace is split into:
 - Status/help: active hints and keyboard guidance.
 
 When raw terminal mode is unavailable, `TERM=dumb`/`NO_COLOR` is active, output is captured, or the terminal is too small, the CLI uses a compact fallback that avoids cursor-control escape sequences.
+
+The compact fallback accepts text commands such as `help`, `connections`, `use <name>`, `buffer set <sql>`, `run`, metadata commands, and `exit`.
 
 ## Keyboard Shortcuts
 
@@ -81,7 +83,11 @@ The left menu lists saved connections and includes:
 - `New PostgreSQL connection`.
 - `Language: English` / `Idioma: Espanol` action for in-session UI switching.
 
-The connection wizard prompts for name, JDBC URL, username, password, and schemas. Required fields are validated before save. PostgreSQL can use schema input; Oracle ignores schema input.
+The connection wizard prompts for name, JDBC URL, username, password, and schemas, and uses a constrained environment selector. Required fields are validated before save. PostgreSQL can use schema input; Oracle ignores schema input.
+
+Environment values are stable labels: `DEV`, `QA`, `STAGING`, and `PROD`. Legacy configs without an environment load as `DEV` so existing profiles keep working; newly saved configs persist `environment=DEV` unless another value is selected.
+
+The TUI shows environment in the connection list and status/footer, for example `[PROD] billing-db`. Production connections are text-marked as `!! PROD !! [PROD] ...` so the warning remains visible even without terminal styling.
 
 Registered connections are stored under `~/.oracle-script-cli/connections/`. Passwords in registered connection files are protected by `ProtectedSecretStore` with local Java encryption key material under `~/.oracle-script-cli/connections/secrets`; connection listings never print passwords.
 
@@ -98,13 +104,15 @@ java -jar target/oracle-script-cli.jar init \
   'jdbc:oracle:thin:@//localhost:1521/XEPDB1' \
   'system' \
   'oracle' \
-  --type oracle
+  --type oracle \
+  --environment dev
 
 java -jar target/oracle-script-cli.jar init \
   'jdbc:postgresql://localhost:5432/appdb' \
   'app_user' \
   'secret' \
   --type postgresql \
+  --environment qa \
   --schemas app,audit \
   --profile pg-qa
 
@@ -112,7 +120,7 @@ java -jar target/oracle-script-cli.jar profiles
 java -jar target/oracle-script-cli.jar validate --profile pg-qa
 ```
 
-Default and named profiles are stored in `~/.oracle-script-cli.properties` or `~/.oracle-script-cli-<profile>.properties`. Legacy profiles without a stored database `type` are treated as Oracle.
+Default and named profiles are stored in `~/.oracle-script-cli.properties` or `~/.oracle-script-cli-<profile>.properties`. Legacy profiles without a stored database `type` are treated as Oracle, and profiles without `environment` are treated as `DEV`.
 
 ## SQL Editor And Metadata
 
@@ -204,20 +212,32 @@ Statement selection rules:
 - Later statements in the buffer are ignored.
 - Unfinished trailing text after the selected statement is not executed.
 
-## Safety And Limitations
+## Safety Mode
+
+Safety mode blocks dangerous SQL by default before execution. This applies to CLI execution and SQL entered in the TUI editor.
+
+Blocked statements include `insert`, `update`, `delete`, `merge`, `drop`, `truncate`, `alter`, `create`, `grant`, and `revoke`. `select` and metadata commands such as `tables`, `describe <table>`, and `indexes <table>` continue normally.
+
+For non-PROD CLI use, bypass requires explicit intent with `--unsafe`:
+
+```bash
+java -jar target/oracle-script-cli.jar run-current @update.sql --unsafe --profile qa
+```
+
+For PROD CLI use, bypass also requires typing the active profile/config name:
+
+```bash
+java -jar target/oracle-script-cli.jar run-current @update.sql --unsafe --confirm-risk prod --profile prod
+```
+
+The older `--force --confirm-risk YES` path is still accepted for non-PROD compatibility, but new automation should use `--unsafe`. The TUI currently blocks dangerous editor SQL and shows a localized Results/Logs safety message instead of opening a confirmation modal.
+
+## Limitations
 
 - Non-SELECT behavior is preserved. Multi-statement or non-SELECT execution does not use the SELECT pagination path.
-- Destructive SQL is blocked by default, including `insert`, `update`, `delete`, `merge`, `drop`, `truncate`, `alter`, `create`, `grant`, and `revoke`.
-- To run destructive SQL non-interactively, use both `--force` and the exact typed confirmation `--confirm-risk YES`.
 - Real Oracle/PostgreSQL integration validation requires live database credentials and reachable database instances.
 - Use deterministic `ORDER BY` clauses for stable paginated results.
 - `Ctrl+H` may be terminal-unreliable; prefer `F1` or `?` for help.
-
-Example forced execution:
-
-```bash
-java -jar target/oracle-script-cli.jar run-current @update.sql --force --confirm-risk YES --profile qa
-```
 
 Command history is stored in `~/.oracle-script-cli.history` and does not include passwords.
 

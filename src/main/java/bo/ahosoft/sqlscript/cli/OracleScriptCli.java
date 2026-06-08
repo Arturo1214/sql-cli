@@ -104,7 +104,7 @@ public final class OracleScriptCli {
         if ("exec".equals(command)) {
             requireSize(parsed.values(), 1, "exec requiere <script|@archivo.sql>");
             String script = readScript(parsed.values().get(0));
-            ensureSafe(script, parsed.force(), parsed.confirmRisk());
+            ensureSafe(script, config, parsed.connectionName(), parsed.force(), parsed.unsafe(), parsed.confirmRisk());
             if (parsed.csvFile() != null) {
                 runner.exportCsv(config, script, parsed.csvFile());
                 System.out.println("CSV generado: " + parsed.csvFile().getAbsolutePath());
@@ -114,6 +114,7 @@ public final class OracleScriptCli {
         } else if ("export".equals(command)) {
             requireSize(parsed.values(), 2, "export requiere <script|@archivo.sql> <salida.csv>");
             String script = readScript(parsed.values().get(0));
+            ensureSafe(script, config, parsed.connectionName(), parsed.force(), parsed.unsafe(), parsed.confirmRisk());
             runner.exportCsv(config, script, new File(parsed.values().get(1)));
             System.out.println("CSV generado: " + new File(parsed.values().get(1)).getAbsolutePath());
         } else if ("tables".equals(command)) {
@@ -211,13 +212,16 @@ public final class OracleScriptCli {
             buffer = readScript(parsed.values().get(0));
         }
         String statement = SqlScriptRunner.currentStatement(buffer, parsed.cursorOffset(buffer));
-        ensureSafe(statement, parsed.force(), parsed.confirmRisk());
+        ConnectionConfig config = parsed.configFile().isFile() ? ConfigStore.load(parsed.configFile()) : null;
+        ensureSafe(statement, config, parsed.connectionName(), parsed.force(), parsed.unsafe(), parsed.confirmRisk());
         if (parsed.dryRun()) {
             System.out.println("Selected statement:");
             System.out.println(statement);
             return;
         }
-        ConnectionConfig config = ConfigStore.load(parsed.configFile());
+        if (config == null) {
+            config = ConfigStore.load(parsed.configFile());
+        }
         print(new SqlScriptRunner().executeSingle(config, statement));
     }
 
@@ -246,6 +250,7 @@ public final class OracleScriptCli {
         requireSize(parsed.values(), 3, "init requiere <jdbcUrl> <usuario> <password>");
         ConnectionConfig config = new ConnectionConfig(
             parsed.databaseType(),
+            parsed.environment(),
             parsed.values().get(0),
             parsed.values().get(1),
             parsed.values().get(2),
@@ -258,6 +263,7 @@ public final class OracleScriptCli {
         ConfigStore.save(parsed.configFile(), config);
         System.out.println("Configuración guardada en: " + parsed.configFile().getAbsolutePath());
         System.out.println("Tipo de base de datos: " + config.databaseType());
+        System.out.println("Environment: " + config.environment());
         if (!config.schemas().isEmpty()) {
             System.out.println("Schemas: " + ConfigStore.joinSchemas(config.schemas()));
         }
@@ -319,7 +325,14 @@ public final class OracleScriptCli {
         Connection connection = connectionFactory.open(config);
         try {
             List<String> selected = discoveryService.resolveSelection(discoveryService.discover(connection), config.schemas());
-            return new ConnectionConfig(config.databaseType(), config.jdbcUrl(), config.username(), config.password(), selected);
+            return new ConnectionConfig(
+                config.databaseType(),
+                config.environment(),
+                config.jdbcUrl(),
+                config.username(),
+                config.password(),
+                selected
+            );
         } finally {
             connection.close();
         }
@@ -346,6 +359,24 @@ public final class OracleScriptCli {
 
     private static void ensureSafe(String script, boolean force, String confirmRisk) {
         SafetyGuard.requireSafe(script, force, confirmRisk);
+    }
+
+    private static void ensureSafe(
+        String script,
+        ConnectionConfig config,
+        String connectionName,
+        boolean force,
+        boolean unsafe,
+        String confirmRisk
+    ) {
+        SafetyGuard.requireSafe(
+            script,
+            config == null ? ConnectionEnvironment.DEV : config.environment(),
+            connectionName,
+            force,
+            unsafe,
+            confirmRisk
+        );
     }
 
     private static int parsePositiveInt(String value, String name) {
@@ -449,13 +480,13 @@ public final class OracleScriptCli {
         System.err.println("  java -jar oracle-script-cli.jar validate [--profile nombre|--config archivo]");
         System.err.println("  java -jar oracle-script-cli.jar workspace");
         System.err.println(
-            "  java -jar oracle-script-cli.jar run-current <script|@archivo.sql> [--cursor offset] [--dry-run] [--force --confirm-risk YES] [--profile nombre|--config archivo]"
+            "  java -jar oracle-script-cli.jar run-current <script|@archivo.sql> [--cursor offset] [--dry-run] [--unsafe] [--confirm-risk name] [--profile nombre|--config archivo]"
         );
         System.err.println(
-            "  java -jar oracle-script-cli.jar exec <script|@archivo.sql> [--force] [--csv salida.csv] [--profile nombre|--config archivo]"
+            "  java -jar oracle-script-cli.jar exec <script|@archivo.sql> [--unsafe] [--confirm-risk name] [--csv salida.csv] [--profile nombre|--config archivo]"
         );
         System.err.println(
-            "  java -jar oracle-script-cli.jar export <script|@archivo.sql> <salida.csv> [--profile nombre|--config archivo]"
+            "  java -jar oracle-script-cli.jar export <script|@archivo.sql> <salida.csv> [--unsafe] [--confirm-risk name] [--profile nombre|--config archivo]"
         );
         System.err.println("  java -jar oracle-script-cli.jar tables [filtro] [--profile nombre|--config archivo]");
         System.err.println("  java -jar oracle-script-cli.jar search <texto> [--profile nombre|--config archivo]");
@@ -488,6 +519,7 @@ public final class OracleScriptCli {
         private final List<String> values;
         private final File configFile;
         private final boolean force;
+        private final boolean unsafe;
         private final File csvFile;
         private final String profile;
         private final String confirmRisk;
@@ -495,6 +527,7 @@ public final class OracleScriptCli {
         private final Integer cursor;
         private final boolean dryRun;
         private final DatabaseType databaseType;
+        private final ConnectionEnvironment environment;
         private final List<String> schemas;
 
         private ParsedArgs(
@@ -502,6 +535,7 @@ public final class OracleScriptCli {
             List<String> values,
             File configFile,
             boolean force,
+            boolean unsafe,
             File csvFile,
             String profile,
             String confirmRisk,
@@ -509,12 +543,14 @@ public final class OracleScriptCli {
             Integer cursor,
             boolean dryRun,
             DatabaseType databaseType,
+            ConnectionEnvironment environment,
             List<String> schemas
         ) {
             this.command = command;
             this.values = values;
             this.configFile = configFile;
             this.force = force;
+            this.unsafe = unsafe;
             this.csvFile = csvFile;
             this.profile = profile;
             this.confirmRisk = confirmRisk;
@@ -522,6 +558,7 @@ public final class OracleScriptCli {
             this.cursor = cursor;
             this.dryRun = dryRun;
             this.databaseType = databaseType;
+            this.environment = environment == null ? ConnectionEnvironment.DEV : environment;
             this.schemas = schemas;
         }
 
@@ -530,6 +567,7 @@ public final class OracleScriptCli {
             List<String> values = new ArrayList<>(Arrays.asList(args).subList(1, args.length));
             File configFile = ConfigStore.defaultConfigFile();
             boolean force = false;
+            boolean unsafe = false;
             File csvFile = null;
             String profile = null;
             String confirmRisk = null;
@@ -538,12 +576,16 @@ public final class OracleScriptCli {
             boolean dryRun = false;
             boolean explicitConfig = false;
             DatabaseType databaseType = DatabaseType.ORACLE;
+            ConnectionEnvironment environment = ConnectionEnvironment.DEV;
             List<String> schemas = Collections.emptyList();
 
             for (int i = 0; i < values.size(); i++) {
                 String value = values.get(i);
                 if ("--force".equals(value)) {
                     force = true;
+                    values.remove(i--);
+                } else if ("--unsafe".equals(value)) {
+                    unsafe = true;
                     values.remove(i--);
                 } else if ("--dry-run".equals(value)) {
                     dryRun = true;
@@ -601,6 +643,13 @@ public final class OracleScriptCli {
                     databaseType = DatabaseType.fromStoredValue(values.get(i + 1));
                     values.remove(i + 1);
                     values.remove(i--);
+                } else if ("--environment".equals(value) || "--env".equals(value)) {
+                    if (i + 1 >= values.size()) {
+                        throw new IllegalArgumentException(value + " requiere " + ConnectionEnvironment.allowedValues());
+                    }
+                    environment = ConnectionEnvironment.fromInputValue(values.get(i + 1));
+                    values.remove(i + 1);
+                    values.remove(i--);
                 } else if ("--schemas".equals(value)) {
                     if (i + 1 >= values.size()) {
                         throw new IllegalArgumentException("--schemas requiere una lista separada por comas");
@@ -615,6 +664,7 @@ public final class OracleScriptCli {
                 values,
                 configFile,
                 force,
+                unsafe,
                 csvFile,
                 profile,
                 confirmRisk,
@@ -622,6 +672,7 @@ public final class OracleScriptCli {
                 cursor,
                 dryRun,
                 databaseType,
+                environment,
                 schemas
             );
         }
@@ -640,6 +691,10 @@ public final class OracleScriptCli {
 
         public boolean force() {
             return force;
+        }
+
+        public boolean unsafe() {
+            return unsafe;
         }
 
         public File csvFile() {
@@ -674,6 +729,17 @@ public final class OracleScriptCli {
 
         public DatabaseType databaseType() {
             return databaseType;
+        }
+
+        public ConnectionEnvironment environment() {
+            return environment;
+        }
+
+        public String connectionName() {
+            if (profile != null && !profile.trim().isEmpty()) {
+                return profile;
+            }
+            return configFile == null ? null : configFile.getName();
         }
 
         public List<String> schemas() {

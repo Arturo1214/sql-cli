@@ -68,6 +68,7 @@ public final class ConfigStore {
 
         return new ConnectionConfig(
             DatabaseType.fromStoredValue(properties.getProperty("type")),
+            ConnectionEnvironment.fromStoredValue(properties.getProperty("environment")),
             required(properties, "jdbcUrl"),
             required(properties, "username"),
             required(properties, "password"),
@@ -83,6 +84,7 @@ public final class ConfigStore {
 
         Properties properties = new Properties();
         properties.setProperty("type", config.databaseType().name());
+        properties.setProperty("environment", config.environment().name());
         properties.setProperty("jdbcUrl", config.jdbcUrl());
         properties.setProperty("username", config.username());
         properties.setProperty("password", config.password());

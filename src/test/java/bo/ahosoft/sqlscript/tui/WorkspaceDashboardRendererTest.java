@@ -1,5 +1,6 @@
 package bo.ahosoft.sqlscript.tui;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -62,7 +63,7 @@ public class WorkspaceDashboardRendererTest {
     }
 
     @Test
-    public void keepsCompactFallbackEvenWhenAnsiTerminalIsLarge() {
+    public void rendersFullWidthSplitWhenAnsiTerminalIsLarge() {
         WorkspaceDashboardRenderer.DashboardState state = new WorkspaceDashboardRenderer.DashboardState(
             "reporting",
             Arrays.asList("public", "audit"),
@@ -71,8 +72,8 @@ public class WorkspaceDashboardRendererTest {
             "CUSTOMER_ID | STATUS\n1 | ACTIVE",
             null,
             Arrays.asList(
-                new WorkspaceDashboardRenderer.ConnectionSummary("reporting", "postgresql", true),
-                new WorkspaceDashboardRenderer.ConnectionSummary("warehouse", "oracle", false)
+                new WorkspaceDashboardRenderer.ConnectionSummary("reporting", "postgresql", "QA", true),
+                new WorkspaceDashboardRenderer.ConnectionSummary("warehouse", "oracle", "PROD", false)
             ),
             "Ready"
         );
@@ -80,18 +81,45 @@ public class WorkspaceDashboardRendererTest {
         String dashboard = new WorkspaceDashboardRenderer()
             .render(state, new WorkspaceDashboardRenderer.TerminalCapabilities(true, new WorkspaceDashboardRenderer.TerminalSize(100, 30)));
 
-        assertFalse(dashboard.contains("\u001B[2J"));
-        assertFalse(dashboard.contains("┌"));
-        assertTrue(dashboard.contains("== Interactive Workspace (Compact) =="));
-        assertTrue(dashboard.contains("Connections:"));
-        assertTrue(dashboard.contains("* reporting [postgresql]"));
-        assertTrue(dashboard.contains("  warehouse [oracle]"));
-        assertTrue(dashboard.contains("SQL Buffer:"));
-        assertTrue(dashboard.contains("select customer_id, status from customers"));
-        assertTrue(dashboard.contains("Results:"));
+        assertTrue(dashboard.contains("\u001B[2J"));
+        assertTrue(dashboard.contains("┌"));
+        assertFalse(dashboard.contains("== Interactive Workspace (Compact) =="));
+        assertTrue(dashboard.contains("* [QA] reporting"));
+        assertTrue(dashboard.contains("!! PROD !! [PROD]"));
+        assertTrue(dashboard.contains("SQL Buffer"));
+        assertTrue(dashboard.contains("select customer_id, status from customers where active = true"));
+        assertTrue(dashboard.contains("Results"));
         assertTrue(dashboard.contains("CUSTOMER_ID | STATUS"));
-        assertTrue(dashboard.contains("Status: Ready"));
+        assertTrue(dashboard.contains("Ready | Commands:"));
         assertTrue(dashboard.contains(WorkspaceDashboardRenderer.commandHints()));
+        assertRenderedFrameWidth(dashboard, 100);
+    }
+
+    @Test
+    public void splitRendererUsesWideTerminalWidthForEditorResultsAndSeparators() {
+        String wideSql = "select very_wide_column_name_that_used_to_be_hidden_past_old_caps from important_reporting_table";
+        String wideResult = "RESULT_COLUMN_A | RESULT_COLUMN_B | RESULT_COLUMN_C | RESULT_COLUMN_D | RESULT_COLUMN_E | RESULT_COLUMN_F";
+        WorkspaceDashboardRenderer.DashboardState state = new WorkspaceDashboardRenderer.DashboardState(
+            "reporting",
+            Collections.singletonList("public"),
+            wideSql,
+            Collections.<String>emptyList(),
+            wideResult,
+            null,
+            Collections.singletonList(new WorkspaceDashboardRenderer.ConnectionSummary("reporting", "postgresql", true)),
+            "Ready"
+        );
+
+        String dashboard = new WorkspaceDashboardRenderer()
+            .render(state, new WorkspaceDashboardRenderer.TerminalCapabilities(true, new WorkspaceDashboardRenderer.TerminalSize(160, 36)));
+
+        assertRenderedFrameWidth(dashboard, 160);
+        assertTrue(dashboard.contains("very_wide_column_name_that_used_to_be_hidden_past_old_caps"));
+        assertTrue(dashboard.contains("RESULT_COLUMN_A | RESULT_COLUMN_B | RESULT_COLUMN_C | RESULT_COLUMN_D | RESULT_COLUMN_E"));
+        assertFalse(
+            "wide output should not be clipped at an old 80 column cap",
+            dashboard.contains("RESULT_COLUMN_A | RESULT_COLUMN_B | RESULT_COLUMN_C | RESULT_COLUMN_D | RESULT_COLUMN…")
+        );
     }
 
     @Test
@@ -113,7 +141,7 @@ public class WorkspaceDashboardRendererTest {
         assertFalse(dashboard.contains("\u001B[2J"));
         assertTrue(dashboard.contains("== Interactive Workspace (Compact) =="));
         assertTrue(dashboard.contains("Connections:"));
-        assertTrue(dashboard.contains("* warehouse [oracle]"));
+        assertTrue(dashboard.contains("* [DEV] warehouse [oracle]"));
         assertTrue(dashboard.contains("SQL Buffer:"));
         assertTrue(dashboard.contains("select * from invoices"));
         assertTrue(dashboard.contains("Results:"));
@@ -143,7 +171,7 @@ public class WorkspaceDashboardRendererTest {
         assertFalse(dashboard.contains("\u001B[2J"));
         assertTrue(dashboard.contains("== Interactive Workspace (Compact) =="));
         assertTrue(dashboard.contains("TERM=dumb"));
-        assertTrue(dashboard.contains("warehouse [oracle]"));
+        assertTrue(dashboard.contains("[DEV] warehouse [oracle]"));
     }
 
     @Test
@@ -164,11 +192,11 @@ public class WorkspaceDashboardRendererTest {
         String dashboard = new WorkspaceDashboardRenderer()
             .render(state, new WorkspaceDashboardRenderer.TerminalCapabilities(true, new WorkspaceDashboardRenderer.TerminalSize(80, 24)));
 
-        assertFalse(dashboard.contains("\u001B[2J"));
-        assertTrue(dashboard.contains("== Interactive Workspace (Compact) =="));
-        assertTrue(dashboard.contains("very-long-reporting-connection-name"));
+        assertTrue(dashboard.contains("\u001B[2J"));
+        assertFalse(dashboard.contains("== Interactive Workspace (Compact) =="));
         assertTrue(dashboard.contains("select this_is_a_very_long_column_name"));
         assertTrue(dashboard.contains("this result text is intentionally long enough"));
+        assertRenderedFrameWidth(dashboard, 80);
     }
 
     @Test
@@ -191,10 +219,19 @@ public class WorkspaceDashboardRendererTest {
         String dashboard = new WorkspaceDashboardRenderer()
             .render(state, new WorkspaceDashboardRenderer.TerminalCapabilities(true, new WorkspaceDashboardRenderer.TerminalSize(100, 30)));
 
-        assertFalse(dashboard.contains("\u001B[2J"));
-        assertTrue(dashboard.contains("Results:"));
+        assertTrue(dashboard.contains("\u001B[2J"));
+        assertTrue(dashboard.contains("Results"));
         assertTrue(dashboard.contains("| ID | STATUS |"));
         assertTrue(dashboard.contains("| 42 | ACTIVE |"));
         assertTrue(dashboard.contains("Total rows: 1"));
+        assertRenderedFrameWidth(dashboard, 100);
+    }
+
+    private static void assertRenderedFrameWidth(String dashboard, int expectedWidth) {
+        for (String line : dashboard.split("\\R")) {
+            if (line.startsWith("┌") || line.startsWith("│")) {
+                assertEquals("framed line should use terminal width: " + line, expectedWidth, line.length());
+            }
+        }
     }
 }

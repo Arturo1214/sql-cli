@@ -9,8 +9,10 @@ import bo.ahosoft.sqlscript.tui.*;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.gui2.BasicWindow;
 import com.googlecode.lanterna.gui2.Button;
+import com.googlecode.lanterna.gui2.ComboBox;
 import com.googlecode.lanterna.gui2.Direction;
 import com.googlecode.lanterna.gui2.GridLayout;
+import com.googlecode.lanterna.gui2.Interactable;
 import com.googlecode.lanterna.gui2.Label;
 import com.googlecode.lanterna.gui2.LinearLayout;
 import com.googlecode.lanterna.gui2.Panel;
@@ -95,6 +97,9 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         if (keyStroke.getKeyType() == KeyType.F5 || (keyStroke.isCtrlDown() && Character.valueOf('r').equals(lowerCharacter(keyStroke)))) {
             runCurrentSql();
             return true;
+        }
+        if (focusTarget == FocusTarget.EDITOR && isEditorTextInput(keyStroke)) {
+            return handleEditorTextInput(keyStroke);
         }
         if (focusTarget == FocusTarget.RESULTS && keyStroke.getKeyType() == KeyType.ArrowDown) {
             scrollResults(1);
@@ -185,6 +190,11 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         return false;
     }
 
+    private boolean handleEditorTextInput(KeyStroke keyStroke) {
+        Interactable.Result result = ensureBuilt().sqlEditor().handleInput(keyStroke);
+        return result != Interactable.Result.UNHANDLED;
+    }
+
     public Gui2ConnectionDialog.Form activeConnectionDialog() {
         return activeConnectionDialog;
     }
@@ -214,6 +224,11 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
 
     private BasicWindow connectionDialogWindow(final Gui2ConnectionDialog.Form form) {
         final TextBox name = new TextBox(new TerminalSize(42, 1));
+        final ComboBox<ConnectionEnvironment> environment = new ComboBox<ConnectionEnvironment>(
+            Arrays.asList(ConnectionEnvironment.values())
+        );
+        environment.setReadOnly(true);
+        environment.setSelectedItem(ConnectionEnvironment.DEV);
         final TextBox jdbcUrl = new TextBox(new TerminalSize(42, 1), defaultJdbcUrl(form.databaseType()));
         final TextBox username = new TextBox(new TerminalSize(42, 1));
         final TextBox password = new TextBox(new TerminalSize(42, 1)).setMask('*');
@@ -223,6 +238,8 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         final TuiMessages messages = messages();
         fields.addComponent(new Label(messages.name()));
         fields.addComponent(name);
+        fields.addComponent(new Label(messages.environment()));
+        fields.addComponent(environment);
         fields.addComponent(new Label(messages.jdbcUrl()));
         fields.addComponent(jdbcUrl);
         fields.addComponent(new Label(messages.username()));
@@ -241,6 +258,7 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
                         Gui2ConnectionDialog.Result result = submitConnection(
                             new Gui2ConnectionDialog.Request(
                                 form.databaseType(),
+                                environment.getSelectedItem(),
                                 name.getText(),
                                 jdbcUrl.getText(),
                                 username.getText(),
@@ -284,6 +302,7 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
                 new Runnable() {
                     public void run() {
                         jdbcUrl.setText(defaultJdbcUrl(form.databaseType()));
+                        environment.setSelectedItem(ConnectionEnvironment.DEV);
                         schemas.setText(defaultSchemas(form.databaseType()));
                     }
                 }
@@ -530,7 +549,25 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
     }
 
     private static int caretOffset(Gui2WorkspaceLayout.WorkspaceComponents components) {
-        return components.sqlEditor().getCaretPosition().getColumn();
+        String text = components.sqlEditor().getText();
+        com.googlecode.lanterna.TerminalPosition caretPosition = components.sqlEditor().getCaretPosition();
+        int targetRow = Math.max(0, caretPosition.getRow());
+        int targetColumn = Math.max(0, caretPosition.getColumn());
+        int offset = 0;
+        int row = 0;
+        while (row < targetRow && offset < text.length()) {
+            int lineBreak = text.indexOf('\n', offset);
+            if (lineBreak < 0) {
+                return text.length();
+            }
+            offset = lineBreak + 1;
+            row++;
+        }
+        int lineEnd = text.indexOf('\n', offset);
+        if (lineEnd < 0) {
+            lineEnd = text.length();
+        }
+        return Math.min(lineEnd, offset + targetColumn);
     }
 
     private static Character lowerCharacter(KeyStroke keyStroke) {
@@ -562,6 +599,22 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
                     Character.valueOf('h').equals(character) ||
                     Character.valueOf('l').equals(character) ||
                     Character.valueOf('r').equals(character)))
+        );
+    }
+
+    private static boolean isEditorTextInput(KeyStroke keyStroke) {
+        KeyType keyType = keyStroke.getKeyType();
+        return (
+            keyType == KeyType.Character ||
+            keyType == KeyType.Enter ||
+            keyType == KeyType.Backspace ||
+            keyType == KeyType.Delete ||
+            keyType == KeyType.ArrowDown ||
+            keyType == KeyType.ArrowUp ||
+            keyType == KeyType.ArrowLeft ||
+            keyType == KeyType.ArrowRight ||
+            keyType == KeyType.Home ||
+            keyType == KeyType.End
         );
     }
 

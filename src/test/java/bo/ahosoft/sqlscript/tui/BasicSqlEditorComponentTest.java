@@ -40,10 +40,35 @@ public class BasicSqlEditorComponentTest {
     }
 
     @Test
+    public void insertTextPreservesPastedMultilineScript() {
+        BasicSqlEditorComponent editor = new BasicSqlEditorComponent();
+        String script = "select *\n  from users\n where status = 'ACTIVE';\n\nselect ? from dual;";
+
+        editor.insertText(script);
+
+        assertEquals(script, editor.text());
+        assertEquals(script.length(), editor.cursorOffset());
+        assertEquals(
+            Arrays.asList("select *", "  from users", " where status = 'ACTIVE';", "", "select ? from dual;"),
+            editor.renderLines(80, 10)
+        );
+    }
+
+    @Test
     public void selectsCurrentStatementAtCursor() {
         BasicSqlEditorComponent editor = new BasicSqlEditorComponent("select * from users;\nselect * from orders;", 28);
 
         assertEquals("select * from orders", editor.currentStatement());
+    }
+
+    @Test
+    public void selectsCurrentStatementAfterMultilinePasteByCursorOffset() {
+        String script = "select *\n  from users;\n\nselect *\n  from orders;";
+        BasicSqlEditorComponent editor = new BasicSqlEditorComponent();
+        editor.insertText(script);
+        editor.moveCursor(-8);
+
+        assertEquals("select *\n  from orders", editor.currentStatement());
     }
 
     @Test

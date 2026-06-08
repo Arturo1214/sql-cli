@@ -63,7 +63,7 @@ public final class TuiMessages {
 
     public String statusText(WorkspaceDashboardRenderer.DashboardState state) {
         String status = localizeStatus(valueOrDefault(state.statusMessage(), "Ready"));
-        String active = valueOrDefault(state.activeConnectionName(), none());
+        String active = activeConnectionLabel(state);
         if (language == TuiLanguage.SPANISH) {
             return "Estado: " + status + " | Activa: " + active;
         }
@@ -79,6 +79,9 @@ public final class TuiMessages {
         if ("Nothing is ready to execute".equals(value)) return "No hay nada listo para ejecutar";
         if ("No active connection selected".equals(value)) return "No hay una conexion activa seleccionada";
         if ("No saved connections".equals(value)) return "No hay conexiones guardadas";
+        if (value.startsWith("Safety mode blocked a dangerous SQL statement")) {
+            return value.replace("Safety mode blocked a dangerous SQL statement", "Modo seguro bloqueo una sentencia SQL peligrosa");
+        }
         if ("Metadata loaded".equals(value)) return "Metadatos cargados";
         if (value.startsWith("Active connection: ")) return "Conexion activa: " + value.substring("Active connection: ".length());
         if (value.startsWith("Connection saved: ")) return "Conexion guardada: " + value.substring("Connection saved: ".length());
@@ -109,6 +112,10 @@ public final class TuiMessages {
 
     String name() {
         return language == TuiLanguage.SPANISH ? "Nombre" : "Name";
+    }
+
+    String environment() {
+        return language == TuiLanguage.SPANISH ? "Entorno" : "Environment";
     }
 
     String jdbcUrl() {
@@ -241,6 +248,12 @@ public final class TuiMessages {
         return language == TuiLanguage.SPANISH ? "Todavia no se ejecuto ninguna consulta" : "No query has been executed yet";
     }
 
+    String resultRowsNeedMoreHeight() {
+        return language == TuiLanguage.SPANISH
+            ? "Aumenta la altura de la terminal para ver las filas del resultado"
+            : "Increase terminal height to show result rows";
+    }
+
     public String pageStatus(int page, String pageCount, int from, int to) {
         String rows;
         if (to == from) {
@@ -283,5 +296,18 @@ public final class TuiMessages {
 
     private static String valueOrDefault(String value, String fallback) {
         return value == null || value.trim().isEmpty() ? fallback : value;
+    }
+
+    private String activeConnectionLabel(WorkspaceDashboardRenderer.DashboardState state) {
+        String activeName = valueOrDefault(state.activeConnectionName(), none());
+        if (none().equals(activeName)) {
+            return activeName;
+        }
+        for (WorkspaceDashboardRenderer.ConnectionSummary connection : state.connections()) {
+            if (connection.active() && activeName.equals(connection.name())) {
+                return activeName + " [" + connection.environment() + "]";
+            }
+        }
+        return activeName;
     }
 }

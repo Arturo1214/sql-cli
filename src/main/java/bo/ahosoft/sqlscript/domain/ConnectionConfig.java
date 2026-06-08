@@ -13,17 +13,30 @@ import java.util.List;
 public final class ConnectionConfig {
 
     private final DatabaseType databaseType;
+    private final ConnectionEnvironment environment;
     private final String jdbcUrl;
     private final String username;
     private final String password;
     private final List<String> schemas;
 
     public ConnectionConfig(String jdbcUrl, String username, String password) {
-        this(DatabaseType.ORACLE, jdbcUrl, username, password, Collections.<String>emptyList());
+        this(DatabaseType.ORACLE, ConnectionEnvironment.DEV, jdbcUrl, username, password, Collections.<String>emptyList());
     }
 
     public ConnectionConfig(DatabaseType databaseType, String jdbcUrl, String username, String password, List<String> schemas) {
+        this(databaseType, ConnectionEnvironment.DEV, jdbcUrl, username, password, schemas);
+    }
+
+    public ConnectionConfig(
+        DatabaseType databaseType,
+        ConnectionEnvironment environment,
+        String jdbcUrl,
+        String username,
+        String password,
+        List<String> schemas
+    ) {
         this.databaseType = databaseType == null ? DatabaseType.ORACLE : databaseType;
+        this.environment = environment == null ? ConnectionEnvironment.DEV : environment;
         this.jdbcUrl = jdbcUrl;
         this.username = username;
         this.password = password;
@@ -32,6 +45,10 @@ public final class ConnectionConfig {
 
     public DatabaseType databaseType() {
         return databaseType;
+    }
+
+    public ConnectionEnvironment environment() {
+        return environment;
     }
 
     public String jdbcUrl() {

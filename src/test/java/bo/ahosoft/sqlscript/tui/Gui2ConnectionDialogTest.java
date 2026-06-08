@@ -115,10 +115,12 @@ public class Gui2ConnectionDialogTest {
         Gui2ConnectionDialog.Form form = new Gui2ConnectionDialog(session).open(DatabaseType.POSTGRESQL);
 
         assertEquals(DatabaseType.POSTGRESQL, form.databaseType());
-        assertEquals(Arrays.asList("Name", "JDBC URL", "Username", "Password", "Schemas"), form.fieldLabels());
+        assertEquals(Arrays.asList("Name", "Environment", "JDBC URL", "Username", "Password", "Schemas"), form.fieldLabels());
+        assertEquals(ConnectionEnvironment.DEV, form.environment());
 
         Gui2ConnectionDialog.Result result = form
             .name(" reporting ")
+            .environment(ConnectionEnvironment.STAGING)
             .jdbcUrl(" jdbc:postgresql://localhost:5432/app ")
             .username(" pg ")
             .password("secret")
@@ -129,8 +131,59 @@ public class Gui2ConnectionDialogTest {
         assertEquals("Connection saved: reporting", form.feedback());
         assertEquals("reporting", session.activeConnectionName());
         assertEquals(DatabaseType.POSTGRESQL, result.config().databaseType());
+        assertEquals(ConnectionEnvironment.STAGING, result.config().environment());
         assertEquals("jdbc:postgresql://localhost:5432/app", result.config().jdbcUrl());
         assertEquals("pg", result.config().username());
+    }
+
+    @Test
+    public void wizardFormSavesSelectedProdForOracleAndPostgresql() {
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session();
+        Gui2ConnectionDialog dialog = new Gui2ConnectionDialog(session);
+
+        Gui2ConnectionDialog.Result oracle = dialog
+            .open(DatabaseType.ORACLE)
+            .name("oracle-prod")
+            .environment(ConnectionEnvironment.PROD)
+            .jdbcUrl("jdbc:oracle:thin:@prod:1521/PROD")
+            .username("support")
+            .password("secret")
+            .save();
+        Gui2ConnectionDialog.Result postgresql = dialog
+            .open(DatabaseType.POSTGRESQL)
+            .name("pg-prod")
+            .environment(ConnectionEnvironment.PROD)
+            .jdbcUrl("jdbc:postgresql://prod:5432/app")
+            .username("pg")
+            .password("secret")
+            .selectedSchemas(Arrays.asList("public"))
+            .availableSchemas(Arrays.asList("public"))
+            .save();
+
+        assertTrue(oracle.created());
+        assertEquals(ConnectionEnvironment.PROD, oracle.config().environment());
+        assertTrue(postgresql.created());
+        assertEquals(ConnectionEnvironment.PROD, postgresql.config().environment());
+    }
+
+    @Test
+    public void requestDefaultsEnvironmentToDevWhenOmitted() {
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session();
+        Gui2ConnectionDialog.Result result = new Gui2ConnectionDialog(session).submit(
+            new Gui2ConnectionDialog.Request(
+                DatabaseType.ORACLE,
+                null,
+                "local",
+                "jdbc:oracle:thin:@localhost:1521/XEPDB1",
+                "ora",
+                "secret",
+                Collections.<String>emptyList(),
+                Collections.<String>emptyList()
+            )
+        );
+
+        assertTrue(result.created());
+        assertEquals(ConnectionEnvironment.DEV, result.config().environment());
     }
 
     @Test

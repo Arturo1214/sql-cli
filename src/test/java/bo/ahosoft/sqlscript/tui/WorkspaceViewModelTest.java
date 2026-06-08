@@ -40,15 +40,15 @@ public class WorkspaceViewModelTest {
             "qa-oracle"
         );
 
-        assertEquals("Workspace | Active: qa-oracle [ORACLE]", rendered.headerLine());
-        assertTrue(rendered.leftPaneLines().contains("* qa-oracle [ORACLE]"));
+        assertEquals("Workspace | Active: qa-oracle [DEV] [ORACLE]", rendered.headerLine());
+        assertTrue(rendered.leftPaneLines().contains("* [DEV] qa-oracle [ORACLE]"));
         assertTrue(rendered.leftPaneLines().contains("  New PostgreSQL connection"));
         assertEquals(rendered.leftPaneLines(), rendered.connectionLines());
         assertEquals(Arrays.asList("SQL Editor *", "select * from users"), rendered.editorLines());
         assertEquals(rendered.editorLines(), rendered.rightPaneLines());
         assertTrue(rendered.bottomPaneLines().contains("OK"));
         assertEquals(rendered.bottomPaneLines(), rendered.resultLines());
-        assertEquals("Focus: EDITOR | Active: qa-oracle [ORACLE] | Ready | Ctrl+R Run | F1/? Help | Esc Exit", rendered.footerLine());
+        assertEquals("Focus: EDITOR | Active: qa-oracle [DEV] [ORACLE] | Ready | Ctrl+R Run | F1/? Help | Esc Exit", rendered.footerLine());
         assertEquals(rendered.footerLine(), rendered.statusLine());
         assertTrue(rendered.helpLines().isEmpty());
     }
