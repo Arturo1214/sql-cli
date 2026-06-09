@@ -191,6 +191,15 @@ public final class InteractiveWorkspace {
             return activeConnectionName;
         }
 
+        public void replaceBuffer(String value) {
+            buffer = value == null ? "" : value;
+            try {
+                saveBuffer();
+            } catch (IOException ignored) {
+                // Loading support workflows must still update the active TUI buffer when persistence is unavailable.
+            }
+        }
+
         public ConnectionConfig activeConnection() {
             return activeConnectionName == null ? null : connections.get(activeConnectionName);
         }

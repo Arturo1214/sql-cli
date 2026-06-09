@@ -57,8 +57,8 @@ public final class TuiMessages {
 
     public String helpHint() {
         return language == TuiLanguage.SPANISH
-            ? "Ctrl+R ejecutar | F1/? ayuda | Tab foco | Esc cerrar | diagnosticos SQL"
-            : "Ctrl+R run | F1/? help | Tab focus | Esc close | SQL diagnostics";
+            ? "Ctrl+R ejecutar | F6 abrir SQL | F7/F8 exportar CSV | F1/? ayuda | Tab foco | Esc cerrar | diagnosticos SQL"
+            : "Ctrl+R run | F6 open SQL | F7/F8 export CSV | F1/? help | Tab focus | Esc close | SQL diagnostics";
     }
 
     public String statusText(WorkspaceDashboardRenderer.DashboardState state) {
@@ -167,6 +167,9 @@ public final class TuiMessages {
                 "F3/Ctrl+E: enfocar Editor SQL\n" +
                 "Tab/Shift+Tab: mover foco\n" +
                 "F5/Ctrl+R: ejecutar SQL o comando\n" +
+                "F6: abrir archivo .sql desde una ruta del servidor\n" +
+                "F7: exportar pagina actual como CSV\n" +
+                "F8: exportar todas las paginas como CSV con confirmacion\n" +
                 "Editor: resaltado SQL y diagnosticos no destructivos\n" +
                 "ArrowUp/ArrowDown: desplazar resultados verticalmente\n" +
                 "ArrowLeft/ArrowRight: desplazar resultados horizontalmente\n" +
@@ -185,6 +188,9 @@ public final class TuiMessages {
             "F3/Ctrl+E: focus SQL Editor\n" +
             "Tab/Shift+Tab: move focus\n" +
             "F5/Ctrl+R: execute SQL or command\n" +
+            "F6: open a .sql file from a server path\n" +
+            "F7: export current result page as CSV\n" +
+            "F8: export all result pages as CSV with confirmation\n" +
             "Editor: SQL highlighting and non-destructive diagnostics\n" +
             "ArrowUp/ArrowDown: scroll results vertically\n" +
             "ArrowLeft/ArrowRight: scroll results horizontally\n" +
@@ -199,6 +205,77 @@ public final class TuiMessages {
 
     String connectionSaved(String name) {
         return language == TuiLanguage.SPANISH ? "Conexion guardada: " + name : "Connection saved: " + name;
+    }
+
+    String loadSqlFileAction() {
+        return language == TuiLanguage.SPANISH ? "Abrir archivo SQL (F6)" : "Load SQL File (F6)";
+    }
+
+    String exportCurrentPageAction() {
+        return language == TuiLanguage.SPANISH ? "Exportar pagina actual CSV (F7)" : "Export Current Page CSV (F7)";
+    }
+
+    String exportAllPagesAction() {
+        return language == TuiLanguage.SPANISH ? "Exportar todas las paginas CSV (F8)" : "Export All Pages CSV (F8)";
+    }
+
+    String openSqlFileTitle() {
+        return language == TuiLanguage.SPANISH ? "Abrir archivo SQL" : "Open SQL File";
+    }
+
+    String exportTitle(ExportScope scope) {
+        if (scope == ExportScope.ALL_PAGES) {
+            return language == TuiLanguage.SPANISH ? "Exportar todas las paginas CSV" : "Export All Pages CSV";
+        }
+        return language == TuiLanguage.SPANISH ? "Exportar pagina actual CSV" : "Export Current Page CSV";
+    }
+
+    String pathLabel() {
+        return language == TuiLanguage.SPANISH ? "Ruta" : "Path";
+    }
+
+    String replaceDirtyEditorConfirmation() {
+        return language == TuiLanguage.SPANISH ? "Reemplazar el contenido actual del editor?" : "Replace current editor content?";
+    }
+
+    String exportAllPagesConfirmation() {
+        return language == TuiLanguage.SPANISH ? "Exportar todas las paginas del resultado?" : "Export all result pages?";
+    }
+
+    String exportAllPagesConfirmationTitle() {
+        return language == TuiLanguage.SPANISH ? "Confirmar exportacion de todas las paginas" : "Export All Pages Confirmation";
+    }
+
+    String exportAllPagesCancelled() {
+        return language == TuiLanguage.SPANISH ? "Exportacion de todas las paginas cancelada" : "Export all pages cancelled";
+    }
+
+    String overwriteConfirmationTitle() {
+        return language == TuiLanguage.SPANISH ? "Sobrescribir archivo existente" : "Overwrite Existing File";
+    }
+
+    String overwriteConfirmation(String path) {
+        return language == TuiLanguage.SPANISH ? "Sobrescribir archivo existente: " + path + "?" : "Overwrite existing file: " + path + "?";
+    }
+
+    String exportOverwriteCancelled() {
+        return language == TuiLanguage.SPANISH ? "Sobrescritura de exportacion cancelada" : "Export overwrite cancelled";
+    }
+
+    String continueAction() {
+        return language == TuiLanguage.SPANISH ? "Continuar" : "Continue";
+    }
+
+    String overwriteAction() {
+        return language == TuiLanguage.SPANISH ? "Sobrescribir" : "Overwrite";
+    }
+
+    String sqlFileLoaded(String path) {
+        return language == TuiLanguage.SPANISH ? "Archivo SQL cargado: " + path : "SQL file loaded: " + path;
+    }
+
+    String csvExported(String path) {
+        return language == TuiLanguage.SPANISH ? "CSV exportado: " + path : "CSV exported: " + path;
     }
 
     String connectionCancelled() {

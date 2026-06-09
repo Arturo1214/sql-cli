@@ -29,7 +29,10 @@ import com.googlecode.lanterna.gui2.WindowPostRenderer;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
 import com.googlecode.lanterna.screen.Screen;
+import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -291,24 +294,24 @@ public class Gui2WorkspaceControllerTest {
         assertEquals("Status: Ready | Active: local [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("F1/? help"));
         assertFalse(components.helpText().getText().contains("Ctrl+H help"));
-        assertEquals("Language: English", components.explorer().getItemAt(4).toString());
+        assertEquals("Language: English", components.explorer().getItemAt(7).toString());
 
-        components.explorer().setSelectedIndex(4);
+        components.explorer().setSelectedIndex(7);
         controller.handleEnter();
 
         assertEquals("Estado: Listo | Activa: local [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("F1/? ayuda"));
         assertFalse(components.helpText().getText().contains("Ctrl+H ayuda"));
-        assertEquals("Idioma: Espanol", components.explorer().getItemAt(4).toString());
+        assertEquals("Idioma: Espanol", components.explorer().getItemAt(7).toString());
         assertTrue(hasLabel(components.root(), "Editor SQL"));
         assertTrue(hasLabel(components.root(), "Resultados / Logs"));
         assertEquals("SPANISH", controller.languageName());
 
-        components.explorer().setSelectedIndex(4);
+        components.explorer().setSelectedIndex(7);
         controller.handleEnter();
 
         assertEquals("Status: Ready | Active: local [DEV]", components.statusText().getText());
-        assertEquals("Language: English", components.explorer().getItemAt(4).toString());
+        assertEquals("Language: English", components.explorer().getItemAt(7).toString());
         assertTrue(hasLabel(components.root(), "SQL Editor"));
         assertTrue(hasLabel(components.root(), "Results / Logs"));
         assertEquals("ENGLISH", controller.languageName());
@@ -320,7 +323,7 @@ public class Gui2WorkspaceControllerTest {
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
-        components.explorer().setSelectedIndex(4);
+        components.explorer().setSelectedIndex(7);
         controller.handleEnter();
 
         components.sqlEditor().setText("tables user");
@@ -489,6 +492,275 @@ public class Gui2WorkspaceControllerTest {
     }
 
     @Test
+    public void f6OpensSqlPathDialogAndDirectLoadReplacesCleanEditorAtStart() throws Exception {
+        File sql = temporaryFolder.newFile("support.sql");
+        Files.write(sql.toPath(), "select *\nfrom tickets;".getBytes(StandardCharsets.UTF_8));
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F6)));
+        assertEquals("Open SQL File", textGUI.lastAddedWindow.getTitle());
+
+        assertTrue(controller.openSqlFile(sql.getPath(), false));
+
+        assertEquals("select *\nfrom tickets;", components.sqlEditor().getText());
+        assertEquals("SQL file loaded: " + sql.getCanonicalPath(), components.resultsText().getText());
+        assertEquals(0, components.sqlEditor().getCaretPosition().getColumn());
+        assertEquals(0, components.sqlEditor().getCaretPosition().getRow());
+    }
+
+    @Test
+    public void openSqlPathDialogCancelClosesWithoutChangingEditor() throws Exception {
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select dirty;");
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F6)));
+
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Cancel");
+
+        assertEquals(0, textGUI.windows.size());
+        assertEquals("select dirty;", components.sqlEditor().getText());
+    }
+
+    @Test
+    public void openSqlPathDialogSaveClosesAfterSuccessfulLoad() throws Exception {
+        File sql = temporaryFolder.newFile("close-after-load.sql");
+        Files.write(sql.toPath(), "select loaded;".getBytes(StandardCharsets.UTF_8));
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F6)));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText(sql.getPath());
+
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Save");
+
+        assertEquals(0, textGUI.windows.size());
+        assertEquals("select loaded;", components.sqlEditor().getText());
+    }
+
+    @Test
+    public void dirtySqlLoadRequiresConfirmationAndErrorsKeepEditorContent() throws Exception {
+        File sql = temporaryFolder.newFile("replacement.sql");
+        Files.write(sql.toPath(), "select 2;".getBytes(StandardCharsets.UTF_8));
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.sqlEditor().setText("select 1;");
+
+        assertFalse(controller.openSqlFile(sql.getPath(), false));
+        assertEquals("select 1;", components.sqlEditor().getText());
+        assertTrue(components.resultsText().getText().contains("Replace current editor content"));
+
+        assertTrue(controller.openSqlFile(sql.getPath(), true));
+        assertEquals("select 2;", components.sqlEditor().getText());
+
+        components.sqlEditor().setText("select dirty;");
+        assertFalse(controller.openSqlFile(new File(temporaryFolder.getRoot(), "missing.sql").getPath(), true));
+        assertEquals("select dirty;", components.sqlEditor().getText());
+        assertTrue(components.resultsText().getText().contains("File does not exist"));
+    }
+
+    @Test
+    public void f7AndF8ExportCurrentAndAllPagesWithConfirmationGuardrails() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        controller.handleKeyStroke(new KeyStroke(KeyType.PageDown));
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F7)));
+        assertEquals("Export Current Page CSV", textGUI.lastAddedWindow.getTitle());
+
+        File current = new File(temporaryFolder.getRoot(), "current.csv");
+        assertTrue(controller.exportResults(current.getPath(), ExportScope.CURRENT_PAGE, false, true));
+        assertTrue(new String(Files.readAllBytes(current.toPath()), StandardCharsets.UTF_8).contains("101"));
+        assertFalse(new String(Files.readAllBytes(current.toPath()), StandardCharsets.UTF_8).contains("100"));
+
+        File all = new File(temporaryFolder.getRoot(), "all.csv");
+        assertFalse(controller.exportResults(all.getPath(), ExportScope.ALL_PAGES, false, false));
+        assertFalse(all.exists());
+        assertTrue(components.resultsText().getText().contains("Export all pages cancelled"));
+
+        assertTrue(controller.exportResults(all.getPath(), ExportScope.ALL_PAGES, false, true));
+        assertTrue(new String(Files.readAllBytes(all.toPath()), StandardCharsets.UTF_8).contains("105"));
+    }
+
+    @Test
+    public void exportPathDialogCancelClosesWithoutExportingBlankPath() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F7)));
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Cancel");
+
+        assertEquals(0, textGUI.windows.size());
+        assertFalse(components.resultsText().getText().contains("Path is required"));
+        assertFalse(components.resultsText().getText().contains("CSV exported"));
+    }
+
+    @Test
+    public void exportPathDialogSaveClosesAfterSuccessfulCurrentPageExport() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        File target = new File(temporaryFolder.getRoot(), "modal-current.csv");
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F7)));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText(target.getPath());
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Save");
+
+        assertEquals(0, textGUI.windows.size());
+        assertTrue(target.isFile());
+    }
+
+    @Test
+    public void f8AllPagesExportConfirmedFromUiSucceedsAndClosesModal() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        File target = new File(temporaryFolder.getRoot(), "modal-all.csv");
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F8)));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText(target.getPath());
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Save");
+
+        assertEquals("Export All Pages Confirmation", textGUI.lastAddedWindow.getTitle());
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Continue");
+
+        assertEquals(0, textGUI.windows.size());
+        String csv = new String(Files.readAllBytes(target.toPath()), StandardCharsets.UTF_8);
+        assertTrue(csv.contains("1"));
+        assertTrue(csv.contains("105"));
+        assertTrue(components.resultsText().getText().contains("CSV exported"));
+    }
+
+    @Test
+    public void f8AllPagesExportCancelFromUiDoesNotExportAndClosesModal() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        File target = new File(temporaryFolder.getRoot(), "modal-all-cancelled.csv");
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F8)));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText(target.getPath());
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Save");
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Cancel");
+
+        assertEquals(0, textGUI.windows.size());
+        assertFalse(target.exists());
+        assertTrue(components.resultsText().getText().contains("Export all pages cancelled"));
+    }
+
+    @Test
+    public void existingExportDestinationTriggersOverwriteConfirmationFromUi() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        File existing = temporaryFolder.newFile("modal-existing.csv");
+        Files.write(existing.toPath(), "original".getBytes(StandardCharsets.UTF_8));
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F7)));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText(existing.getPath());
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Save");
+
+        assertEquals("Overwrite Existing File", textGUI.lastAddedWindow.getTitle());
+        assertEquals("original", new String(Files.readAllBytes(existing.toPath()), StandardCharsets.UTF_8));
+        assertTrue(components.resultsText().getText().contains("Overwrite existing file"));
+    }
+
+    @Test
+    public void overwriteConfirmFromUiExportsAndClosesModal() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        File existing = temporaryFolder.newFile("modal-overwrite-confirm.csv");
+        Files.write(existing.toPath(), "original".getBytes(StandardCharsets.UTF_8));
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F7)));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText(existing.getPath());
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Save");
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Overwrite");
+
+        assertEquals(0, textGUI.windows.size());
+        assertTrue(new String(Files.readAllBytes(existing.toPath()), StandardCharsets.UTF_8).startsWith("ID"));
+        assertTrue(components.resultsText().getText().contains("CSV exported"));
+    }
+
+    @Test
+    public void overwriteCancelFromUiDoesNotModifyFileAndClosesModal() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        File existing = temporaryFolder.newFile("modal-overwrite-cancel.csv");
+        Files.write(existing.toPath(), "original".getBytes(StandardCharsets.UTF_8));
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F7)));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText(existing.getPath());
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Save");
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Cancel");
+
+        assertEquals(0, textGUI.windows.size());
+        assertEquals("original", new String(Files.readAllBytes(existing.toPath()), StandardCharsets.UTF_8));
+        assertTrue(components.resultsText().getText().contains("Export overwrite cancelled"));
+    }
+
+    @Test
+    public void exportOverwriteAndPermissionErrorsAreReportedWithoutSuccess() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor(pagedResult());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.sqlEditor().setText("select id from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        File existing = temporaryFolder.newFile("existing.csv");
+        Files.write(existing.toPath(), "original".getBytes(StandardCharsets.UTF_8));
+
+        assertFalse(controller.exportResults(existing.getPath(), ExportScope.CURRENT_PAGE, false, true));
+        assertEquals("original", new String(Files.readAllBytes(existing.toPath()), StandardCharsets.UTF_8));
+        assertTrue(components.resultsText().getText().contains("Target file already exists"));
+
+        assertTrue(controller.exportResults(existing.getPath(), ExportScope.CURRENT_PAGE, true, true));
+        assertTrue(new String(Files.readAllBytes(existing.toPath()), StandardCharsets.UTF_8).startsWith("ID"));
+    }
+
+    @Test
     public void submitConnectionDialogCreatesConnectionAndRebuildsExplorerStatus() throws Exception {
         CapturingExecutor executor = new CapturingExecutor();
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
@@ -508,7 +780,7 @@ public class Gui2WorkspaceControllerTest {
 
         assertTrue(result.created());
         assertEquals("pg", result.config().username());
-        assertEquals(6, components.explorer().getItemCount());
+        assertEquals(9, components.explorer().getItemCount());
         assertEquals("Status: Connection saved: analytics | Active: analytics [DEV]", components.statusText().getText());
     }
 
@@ -527,7 +799,7 @@ public class Gui2WorkspaceControllerTest {
 
         assertFalse(cancelled.created());
         assertEquals("Connection creation cancelled", components.resultsText().getText());
-        assertEquals(5, components.explorer().getItemCount());
+        assertEquals(8, components.explorer().getItemCount());
     }
 
     private InteractiveWorkspace.Session session(CapturingExecutor executor) throws Exception {
@@ -635,6 +907,29 @@ public class Gui2WorkspaceControllerTest {
             }
         }
         return false;
+    }
+
+    private static void clickButton(Component component, String label) throws Exception {
+        Button button = findButton(component, label);
+        assertNotNull(button);
+        java.lang.reflect.Method triggerActions = Button.class.getDeclaredMethod("triggerActions");
+        triggerActions.setAccessible(true);
+        triggerActions.invoke(button);
+    }
+
+    private static Button findButton(Component component, String label) {
+        if (component instanceof Button && label.equals(((Button) component).getLabel())) {
+            return (Button) component;
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getChildren()) {
+                Button found = findButton(child, label);
+                if (found != null) {
+                    return found;
+                }
+            }
+        }
+        return null;
     }
 
     private static <T extends Component> T findComponent(Component component, Class<T> type) {

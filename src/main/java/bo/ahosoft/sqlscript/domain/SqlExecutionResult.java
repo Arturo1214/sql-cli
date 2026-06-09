@@ -152,6 +152,21 @@ public final class SqlExecutionResult {
         return pageSource != null || !headers.isEmpty();
     }
 
+    public TabularPage tabularPage() {
+        return tabularPage(pageIndex);
+    }
+
+    public TabularPage tabularPage(int index) {
+        int safeIndex = Math.max(0, Math.min(index, pageCount() - 1));
+        if (pageSource != null) {
+            return new TabularPage(pageSource.headers(), cachedPage(safeIndex).rows, safeIndex, pageCount());
+        }
+        int from = safeIndex * pageSize;
+        int to = Math.min(from + pageSize, rows.size());
+        List<List<String>> pageRows = from >= to ? Collections.<List<String>>emptyList() : rows.subList(from, to);
+        return new TabularPage(headers, pageRows, safeIndex, pageCount());
+    }
+
     public String consoleTableWithRowNumbers() {
         return consoleTableWithRowNumbers(new TuiMessages(TuiLanguage.ENGLISH));
     }
@@ -294,6 +309,37 @@ public final class SqlExecutionResult {
 
         public PageRows(List<List<String>> rows) {
             this.rows = rows == null ? Collections.<List<String>>emptyList() : rows;
+        }
+    }
+
+    public static final class TabularPage {
+
+        private final List<String> headers;
+        private final List<List<String>> rows;
+        private final int pageIndex;
+        private final int pageCount;
+
+        private TabularPage(List<String> headers, List<List<String>> rows, int pageIndex, int pageCount) {
+            this.headers = immutableStrings(headers);
+            this.rows = immutableRows(rows);
+            this.pageIndex = pageIndex;
+            this.pageCount = pageCount;
+        }
+
+        public List<String> headers() {
+            return headers;
+        }
+
+        public List<List<String>> rows() {
+            return rows;
+        }
+
+        public int pageIndex() {
+            return pageIndex;
+        }
+
+        public int pageCount() {
+            return pageCount;
         }
     }
 

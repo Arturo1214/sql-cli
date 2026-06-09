@@ -47,7 +47,7 @@ public class Gui2WorkspaceLayoutTest {
         assertSame(components.root(), components.window().getComponent());
         assertTrue(components.root() instanceof Panel);
         assertTrue(components.explorer() instanceof ActionListBox);
-        assertEquals(5, components.explorer().getItemCount());
+        assertEquals(8, components.explorer().getItemCount());
         assertTrue(components.sqlEditor() instanceof TextBox);
         assertEquals("select *\nfrom users", components.sqlEditor().getText());
         assertFalse(components.sqlEditor().isReadOnly());
@@ -84,7 +84,7 @@ public class Gui2WorkspaceLayoutTest {
 
         Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout().build(state);
 
-        assertEquals(3, components.explorer().getItemCount());
+        assertEquals(6, components.explorer().getItemCount());
         assertEquals("", components.sqlEditor().getText());
         assertEquals("No results yet", components.resultsText().getText());
         assertEquals("Status: Ready | Active: none", components.statusText().getText());
@@ -188,6 +188,24 @@ public class Gui2WorkspaceLayoutTest {
     }
 
     @Test
+    public void explorerIncludesKeyboardAccessibleSupportWorkflowActions() {
+        RecordingActions actions = new RecordingActions();
+        Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout().build(stateWithConnection(), actions);
+
+        components.explorer().setSelectedIndex(3);
+        components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(4);
+        components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(5);
+        components.explorer().runSelectedItem();
+
+        assertEquals("load,current,all", actions.calls);
+        assertEquals("Load SQL File (F6)", components.explorer().getItemAt(3).toString());
+        assertEquals("Export Current Page CSV (F7)", components.explorer().getItemAt(4).toString());
+        assertEquals("Export All Pages CSV (F8)", components.explorer().getItemAt(5).toString());
+    }
+
+    @Test
     public void stackedActiveLayoutGivesEditorResultsAndFooterFullTerminalWidth() {
         Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout()
             .build(stateWithConnection(), Gui2WorkspaceLayout.WorkspaceUiActions.noop(), new TerminalSize(143, 40));
@@ -216,6 +234,33 @@ public class Gui2WorkspaceLayoutTest {
             Arrays.asList(new WorkspaceDashboardRenderer.ConnectionSummary("reporting", "POSTGRESQL", true)),
             "Ready"
         );
+    }
+
+    private static final class RecordingActions implements Gui2WorkspaceLayout.WorkspaceUiActions {
+
+        private String calls = "";
+
+        public void selectConnection(int index) {}
+
+        public void openConnectionDialog(DatabaseType databaseType) {}
+
+        public void switchLanguage() {}
+
+        public void openSqlFileDialog() {
+            calls = append(calls, "load");
+        }
+
+        public void openExportDialog(ExportScope scope) {
+            calls = append(calls, scope == ExportScope.CURRENT_PAGE ? "current" : "all");
+        }
+
+        public boolean handleWorkspaceKeyStroke(KeyStroke keyStroke) {
+            return false;
+        }
+
+        private static String append(String current, String next) {
+            return current.length() == 0 ? next : current + "," + next;
+        }
     }
 
     private static void assertPaneSizesFit(Gui2WorkspaceLayout.WorkspaceComponents components, int terminalColumns) {

@@ -164,6 +164,30 @@ public class Gui2WorkspaceLayout {
         explorer.addItem(messages.newOracleConnection(), dialogAction(actions, DatabaseType.ORACLE));
         explorer.addItem(messages.newPostgresqlConnection(), dialogAction(actions, DatabaseType.POSTGRESQL));
         explorer.addItem(
+            messages.loadSqlFileAction(),
+            new Runnable() {
+                public void run() {
+                    actions.openSqlFileDialog();
+                }
+            }
+        );
+        explorer.addItem(
+            messages.exportCurrentPageAction(),
+            new Runnable() {
+                public void run() {
+                    actions.openExportDialog(ExportScope.CURRENT_PAGE);
+                }
+            }
+        );
+        explorer.addItem(
+            messages.exportAllPagesAction(),
+            new Runnable() {
+                public void run() {
+                    actions.openExportDialog(ExportScope.ALL_PAGES);
+                }
+            }
+        );
+        explorer.addItem(
             messages.languageAction(),
             new Runnable() {
                 public void run() {
@@ -366,6 +390,10 @@ public class Gui2WorkspaceLayout {
 
         void switchLanguage();
 
+        void openSqlFileDialog();
+
+        void openExportDialog(ExportScope scope);
+
         boolean handleWorkspaceKeyStroke(KeyStroke keyStroke);
 
         public static WorkspaceUiActions noop() {
@@ -375,6 +403,10 @@ public class Gui2WorkspaceLayout {
                 public void openConnectionDialog(DatabaseType databaseType) {}
 
                 public void switchLanguage() {}
+
+                public void openSqlFileDialog() {}
+
+                public void openExportDialog(ExportScope scope) {}
 
                 public boolean handleWorkspaceKeyStroke(KeyStroke keyStroke) {
                     return false;

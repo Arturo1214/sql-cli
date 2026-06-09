@@ -17,10 +17,12 @@ import com.googlecode.lanterna.gui2.Label;
 import com.googlecode.lanterna.gui2.LinearLayout;
 import com.googlecode.lanterna.gui2.Panel;
 import com.googlecode.lanterna.gui2.TextBox;
+import com.googlecode.lanterna.gui2.TextGUI;
 import com.googlecode.lanterna.gui2.Window;
 import com.googlecode.lanterna.gui2.WindowBasedTextGUI;
 import com.googlecode.lanterna.input.KeyStroke;
 import com.googlecode.lanterna.input.KeyType;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -38,6 +40,9 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
     private int resultScrollOffset;
     private int resultHorizontalOffset;
     private TuiLanguage language = TuiLanguage.ENGLISH;
+    private String editorCleanSnapshot;
+    private final SupportWorkflowFileService fileService = new SupportWorkflowFileService();
+    private final CsvResultExporter csvExporter = new CsvResultExporter();
 
     public Gui2WorkspaceController(InteractiveWorkspace.Session session) {
         this(session, null);
@@ -51,6 +56,7 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
     public Gui2WorkspaceLayout.WorkspaceComponents build() {
         layout.setMessages(messages());
         components = layout.build(session.dashboardState(), this);
+        editorCleanSnapshot = components.sqlEditor().getText();
         focus(FocusTarget.EXPLORER);
         return components;
     }
@@ -58,6 +64,7 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
     public Gui2WorkspaceLayout.WorkspaceComponents build(TerminalSize terminalSize) {
         layout.setMessages(messages());
         components = layout.build(session.dashboardState(), this, terminalSize);
+        editorCleanSnapshot = components.sqlEditor().getText();
         focus(FocusTarget.EXPLORER);
         return components;
     }
@@ -96,6 +103,18 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         }
         if (keyStroke.getKeyType() == KeyType.F5 || (keyStroke.isCtrlDown() && Character.valueOf('r').equals(lowerCharacter(keyStroke)))) {
             runCurrentSql();
+            return true;
+        }
+        if (keyStroke.getKeyType() == KeyType.F6) {
+            openSqlFileDialog();
+            return true;
+        }
+        if (keyStroke.getKeyType() == KeyType.F7) {
+            openExportDialog(ExportScope.CURRENT_PAGE);
+            return true;
+        }
+        if (keyStroke.getKeyType() == KeyType.F8) {
+            openExportDialog(ExportScope.ALL_PAGES);
             return true;
         }
         if (focusTarget == FocusTarget.EDITOR && isEditorTextInput(keyStroke)) {
@@ -167,6 +186,94 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         layout.setMessages(messages());
         ensureBuilt().rebuildExplorer(session.dashboardState(), this);
         refresh();
+    }
+
+    public void openSqlFileDialog() {
+        final TextBox path = new TextBox(new TerminalSize(60, 1));
+        BasicWindow window = pathDialog(
+            messages().openSqlFileTitle(),
+            path,
+            new DialogAction() {
+                public boolean run(BasicWindow dialog) {
+                    return openSqlFile(path.getText(), false);
+                }
+            }
+        );
+        addOrRenderWindow(window, messages().openSqlFileTitle());
+    }
+
+    public void openExportDialog(final ExportScope scope) {
+        final TextBox path = new TextBox(new TerminalSize(60, 1));
+        BasicWindow window = pathDialog(
+            messages().exportTitle(scope),
+            path,
+            new DialogAction() {
+                public boolean run(BasicWindow dialog) {
+                    return beginExportFromDialog(path.getText(), scope, dialog);
+                }
+            }
+        );
+        addOrRenderWindow(window, messages().exportTitle(scope));
+    }
+
+    private boolean beginExportFromDialog(String typedPath, ExportScope scope, BasicWindow pathDialog) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        File target;
+        try {
+            target = fileService.validateExportTarget(typedPath, true);
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+        if (scope == ExportScope.ALL_PAGES) {
+            current.resultsText().setText(messages().exportAllPagesConfirmation());
+            showAllPagesConfirmation(pathDialog, target);
+            return false;
+        }
+        if (target.exists()) {
+            current.resultsText().setText(messages().overwriteConfirmation(target.getPath()));
+            showOverwriteConfirmation(pathDialog, target, scope, true);
+            return false;
+        }
+        return exportResults(target.getPath(), scope, false, true);
+    }
+
+    public boolean openSqlFile(String typedPath, boolean replaceDirty) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        if (isDirty(current) && !replaceDirty) {
+            current.resultsText().setText(messages().replaceDirtyEditorConfirmation());
+            return false;
+        }
+        try {
+            SupportWorkflowFileService.LoadedSqlFile loaded = fileService.readSqlFile(typedPath);
+            current.sqlEditor().setText(loaded.content());
+            current.sqlEditor().setCaretPosition(0, 0);
+            editorCleanSnapshot = loaded.content();
+            session.replaceBuffer(loaded.content());
+            current.resultsText().setText(messages().sqlFileLoaded(loaded.file().getCanonicalPath()));
+            refreshEditorDiagnostics(current);
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
+    public boolean exportResults(String typedPath, ExportScope scope, boolean overwrite, boolean confirmAllPages) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        if (scope == ExportScope.ALL_PAGES && !confirmAllPages) {
+            current.resultsText().setText(messages().exportAllPagesCancelled());
+            return false;
+        }
+        try {
+            File target = fileService.validateExportTarget(typedPath, overwrite);
+            csvExporter.export(session.lastExecutionResult(), target, scope, overwrite);
+            current.resultsText().setText(messages().csvExported(target.getCanonicalPath()));
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
     }
 
     public boolean handleWorkspaceKeyStroke(KeyStroke keyStroke) {
@@ -318,6 +425,159 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         window.setHints(Arrays.asList(Window.Hint.CENTERED, Window.Hint.MODAL));
         window.setComponent(root);
         return window;
+    }
+
+    private BasicWindow pathDialog(String title, final TextBox path, final DialogAction action) {
+        final BasicWindow[] dialog = new BasicWindow[1];
+        Panel root = new Panel(new LinearLayout(Direction.VERTICAL));
+        root.addComponent(new Label(messages().pathLabel()));
+        root.addComponent(path);
+        Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        buttons.addComponent(
+            new Button(
+                messages().save(),
+                new Runnable() {
+                    public void run() {
+                        if (action.run(dialog[0])) {
+                            closeDialog(dialog[0]);
+                        }
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().cancel(),
+                new Runnable() {
+                    public void run() {
+                        closeDialog(dialog[0]);
+                    }
+                }
+            )
+        );
+        root.addComponent(buttons);
+        BasicWindow window = new BasicWindow(title);
+        dialog[0] = window;
+        window.setHints(Arrays.asList(Window.Hint.CENTERED, Window.Hint.MODAL));
+        window.setComponent(root);
+        return window;
+    }
+
+    private interface DialogAction {
+        boolean run(BasicWindow dialog);
+    }
+
+    private void showAllPagesConfirmation(final BasicWindow pathDialog, final File target) {
+        final BasicWindow[] confirmDialog = new BasicWindow[1];
+        Panel root = confirmationRoot(messages().exportAllPagesConfirmation());
+        Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        buttons.addComponent(
+            new Button(
+                messages().continueAction(),
+                new Runnable() {
+                    public void run() {
+                        if (target.exists()) {
+                            ensureBuilt().resultsText().setText(messages().overwriteConfirmation(target.getPath()));
+                            showOverwriteConfirmation(pathDialog, target, ExportScope.ALL_PAGES, true);
+                            closeDialog(confirmDialog[0]);
+                            return;
+                        }
+                        if (exportResults(target.getPath(), ExportScope.ALL_PAGES, false, true)) {
+                            closeDialog(confirmDialog[0]);
+                            closeDialog(pathDialog);
+                        }
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().cancel(),
+                new Runnable() {
+                    public void run() {
+                        ensureBuilt().resultsText().setText(messages().exportAllPagesCancelled());
+                        closeDialog(confirmDialog[0]);
+                        closeDialog(pathDialog);
+                    }
+                }
+            )
+        );
+        root.addComponent(buttons);
+        confirmDialog[0] = confirmationWindow(messages().exportAllPagesConfirmationTitle(), root);
+        addOrRenderWindow(confirmDialog[0], messages().exportAllPagesConfirmation());
+    }
+
+    private void showOverwriteConfirmation(
+        final BasicWindow pathDialog,
+        final File target,
+        final ExportScope scope,
+        final boolean allPagesConfirmed
+    ) {
+        final BasicWindow[] confirmDialog = new BasicWindow[1];
+        Panel root = confirmationRoot(messages().overwriteConfirmation(target.getPath()));
+        Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        buttons.addComponent(
+            new Button(
+                messages().overwriteAction(),
+                new Runnable() {
+                    public void run() {
+                        if (exportResults(target.getPath(), scope, true, allPagesConfirmed)) {
+                            closeDialog(confirmDialog[0]);
+                            closeDialog(pathDialog);
+                        }
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().cancel(),
+                new Runnable() {
+                    public void run() {
+                        ensureBuilt().resultsText().setText(messages().exportOverwriteCancelled());
+                        closeDialog(confirmDialog[0]);
+                        closeDialog(pathDialog);
+                    }
+                }
+            )
+        );
+        root.addComponent(buttons);
+        confirmDialog[0] = confirmationWindow(messages().overwriteConfirmationTitle(), root);
+        addOrRenderWindow(confirmDialog[0], messages().overwriteConfirmation(target.getPath()));
+    }
+
+    private Panel confirmationRoot(String message) {
+        Panel root = new Panel(new LinearLayout(Direction.VERTICAL));
+        root.addComponent(new Label(message));
+        return root;
+    }
+
+    private BasicWindow confirmationWindow(String title, Panel root) {
+        BasicWindow window = new BasicWindow(title);
+        window.setHints(Arrays.asList(Window.Hint.CENTERED, Window.Hint.MODAL));
+        window.setComponent(root);
+        return window;
+    }
+
+    private static void closeDialog(BasicWindow window) {
+        if (window == null) {
+            return;
+        }
+        TextGUI textGUI = window.getTextGUI();
+        if (textGUI instanceof WindowBasedTextGUI) {
+            ((WindowBasedTextGUI) textGUI).removeWindow(window);
+        }
+        window.close();
+    }
+
+    private void addOrRenderWindow(BasicWindow window, String fallback) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        WindowBasedTextGUI textGUI = current.window().getTextGUI();
+        if (textGUI != null) {
+            textGUI.addWindow(window);
+        } else {
+            current.resultsText().setText(fallback);
+        }
     }
 
     private void closeActiveConnectionDialogWindow() {
@@ -591,6 +851,9 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
             keyType == KeyType.F2 ||
             keyType == KeyType.F3 ||
             keyType == KeyType.F5 ||
+            keyType == KeyType.F6 ||
+            keyType == KeyType.F7 ||
+            keyType == KeyType.F8 ||
             keyType == KeyType.Escape ||
             (keyStroke.isShiftDown() && keyType == KeyType.Tab) ||
             (keyStroke.isCtrlDown() &&
@@ -620,6 +883,12 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
 
     private boolean shouldHandleHelpShortcut(KeyStroke keyStroke) {
         return isNonTypingHelpShortcut(keyStroke) || (isQuestionHelpShortcut(keyStroke) && focusTarget != FocusTarget.EDITOR);
+    }
+
+    private boolean isDirty(Gui2WorkspaceLayout.WorkspaceComponents current) {
+        String clean = editorCleanSnapshot == null ? "" : editorCleanSnapshot;
+        String currentText = current.sqlEditor().getText() == null ? "" : current.sqlEditor().getText();
+        return !clean.equals(currentText);
     }
 
     private static boolean isHelpShortcut(KeyStroke keyStroke) {

@@ -67,6 +67,9 @@ The compact fallback accepts text commands such as `help`, `connections`, `use <
 | `F3` or `Ctrl+E`                      | Focus the SQL editor.                                                                        |
 | `Tab` / `Shift+Tab`                   | Cycle focus through menu, editor, results, and status areas.                                 |
 | `F5` or `Ctrl+R`                      | Execute the current SQL buffer or metadata command.                                          |
+| `F6`                                  | Load a `.sql` file from a typed server filesystem path into the editor.                      |
+| `F7`                                  | Export the current visible result page as CSV.                                               |
+| `F8`                                  | Export all result pages as CSV after confirmation.                                           |
 | `Enter` in the menu                   | Select the active connection/action; selecting a saved connection moves focus to the editor. |
 | `ArrowUp` / `ArrowDown` in results    | Scroll results vertically.                                                                   |
 | `ArrowLeft` / `ArrowRight` in results | Scroll results horizontally.                                                                 |
@@ -74,6 +77,15 @@ The compact fallback accepts text commands such as `help`, `connections`, `use <
 | `Esc`                                 | Close/exit the current workspace view.                                                       |
 
 `Ctrl+H` may be unreliable in some terminals because it is often interpreted as Backspace. Use `F1` or `?` for dependable help access.
+
+## Support Workflow Toolkit
+
+Support workflows are terminal-only and SSH-friendly. Paths are typed as server filesystem paths, so they work the same in a local shell and over SSH. No desktop file picker, browser download, GUI-native clipboard flow, or desktop-only interaction is required.
+
+- `F6` prompts for a `.sql` file path and loads it into the SQL editor. If the editor is dirty, confirm before replacing the current buffer.
+- `F7` prompts for an export path and writes the current visible result page as CSV, preserving headers and column order.
+- `F8` prompts for an export path and asks for confirmation before exporting all paginated result pages as CSV.
+- Existing export targets require overwrite confirmation. Missing parent directories, directory targets, and permission errors are reported without treating partial output as success.
 
 ## Connection Management
 
