@@ -14,6 +14,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.sql.SQLException;
+import java.time.Clock;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -386,6 +387,80 @@ public class InteractiveWorkspaceTest {
         assertEquals("Connection saved: reporting", session.dashboardState().statusMessage());
     }
 
+    @Test
+    public void queryLibraryCommandsSaveListSearchFavoriteAndDeleteCurrentBuffer() throws Exception {
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
+            null,
+            editorStore(),
+            new CapturingExecutor(),
+            queryLibraryStore()
+        );
+        session.bufferCommand(WorkspaceCommand.parse("buffer set select * from invoices"));
+
+        String saved = session.libraryCommand(
+            WorkspaceCommand.parse("lib save Invoice Report --desc monthly totals --tags finance,month-end --favorite")
+        );
+        String listed = session.libraryCommand(WorkspaceCommand.parse("lib list"));
+        String searched = session.libraryCommand(WorkspaceCommand.parse("lib search month-end"));
+        String unfavorited = session.libraryCommand(WorkspaceCommand.parse("lib unfavorite invoice-report"));
+        String deletedWithoutConfirmation = session.libraryCommand(WorkspaceCommand.parse("lib delete invoice-report"));
+        String deleted = session.libraryCommand(WorkspaceCommand.parse("lib delete invoice-report --yes"));
+
+        assertTrue(saved.contains("Saved query: invoice-report"));
+        assertTrue(saved.contains(QueryLibraryStore.PRIVACY_WARNING));
+        assertTrue(listed.contains("* invoice-report | Invoice Report | finance, month-end | monthly totals"));
+        assertTrue(searched.contains("invoice-report | Invoice Report"));
+        assertTrue(unfavorited.contains("Updated favorite: invoice-report = false"));
+        assertEquals("Use --yes to delete query: invoice-report", deletedWithoutConfirmation);
+        assertEquals("Deleted query: invoice-report", deleted);
+        assertEquals("No saved queries", session.libraryCommand(WorkspaceCommand.parse("lib list")));
+    }
+
+    @Test
+    public void queryLibraryLoadRequiresReplaceForDirtyBufferAndDoesNotExecuteSql() throws Exception {
+        QueryLibraryStore store = queryLibraryStore();
+        store.save("Drop Users", "delete from users", "dangerous", Arrays.asList("ops"), false);
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(null, editorStore(), executor, store);
+        session.addConnection("local", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "secret"));
+        session.bufferCommand(WorkspaceCommand.parse("buffer set select * from users"));
+
+        String blocked = session.libraryCommand(WorkspaceCommand.parse("lib load drop-users"));
+        String loaded = session.libraryCommand(WorkspaceCommand.parse("lib load drop-users --replace"));
+
+        assertEquals("Buffer has content. Re-run with --replace to load query: drop-users", blocked);
+        assertTrue(loaded.contains("Loaded query into buffer: drop-users"));
+        assertEquals("delete from users", session.dashboardState().buffer());
+        assertEquals(null, executor.statement);
+
+        String runBlocked = session.runCurrentBuffer();
+
+        assertTrue(runBlocked.contains("Safety mode blocked a dangerous SQL statement"));
+        assertEquals(null, executor.statement);
+    }
+
+    @Test
+    public void replDispatchesQueryLibraryCommandsAndPreservesMetadataWorkflow() throws Exception {
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
+            null,
+            editorStore(),
+            new CapturingExecutor(),
+            queryLibraryStore()
+        );
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        new InteractiveWorkspace(
+            input("buffer set select * from orders\nlib save Orders --tags reporting\nlib search reporting\ntables user\nexit\n"),
+            output,
+            session
+        ).run();
+
+        String rendered = text(output);
+        assertTrue(rendered.contains("Saved query: orders"));
+        assertTrue(rendered.contains("orders | Orders | reporting"));
+        assertTrue(rendered.contains("No active connection selected"));
+    }
+
     private InteractiveWorkspace.Session session(ConnectionRegistry registry, InteractiveWorkspace.WorkspaceSqlExecutor executor)
         throws Exception {
         return new InteractiveWorkspace.Session(registry, editorStore(), executor);
@@ -393,6 +468,10 @@ public class InteractiveWorkspaceTest {
 
     private EditorStateStore editorStore() throws Exception {
         return new EditorStateStore(temporaryFolder.newFile("editor.properties"), 5);
+    }
+
+    private QueryLibraryStore queryLibraryStore() throws Exception {
+        return new QueryLibraryStore(temporaryFolder.newFile("query-library.properties"), Clock.systemUTC());
     }
 
     private ConnectionRegistry registry() throws Exception {

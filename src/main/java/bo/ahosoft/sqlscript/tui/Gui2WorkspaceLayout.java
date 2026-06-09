@@ -172,6 +172,22 @@ public class Gui2WorkspaceLayout {
             }
         );
         explorer.addItem(
+            messages.saveQueryToLibraryAction(),
+            new Runnable() {
+                public void run() {
+                    actions.openSaveQueryDialog();
+                }
+            }
+        );
+        explorer.addItem(
+            messages.openQueryLibraryAction(),
+            new Runnable() {
+                public void run() {
+                    actions.openQueryLibraryDialog();
+                }
+            }
+        );
+        explorer.addItem(
             messages.exportCurrentPageAction(),
             new Runnable() {
                 public void run() {
@@ -392,6 +408,10 @@ public class Gui2WorkspaceLayout {
 
         void openSqlFileDialog();
 
+        void openSaveQueryDialog();
+
+        void openQueryLibraryDialog();
+
         void openExportDialog(ExportScope scope);
 
         boolean handleWorkspaceKeyStroke(KeyStroke keyStroke);
@@ -405,6 +425,10 @@ public class Gui2WorkspaceLayout {
                 public void switchLanguage() {}
 
                 public void openSqlFileDialog() {}
+
+                public void openSaveQueryDialog() {}
+
+                public void openQueryLibraryDialog() {}
 
                 public void openExportDialog(ExportScope scope) {}
 

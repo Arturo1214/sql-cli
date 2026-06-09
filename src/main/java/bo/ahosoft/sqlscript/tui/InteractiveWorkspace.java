@@ -63,6 +63,8 @@ public final class InteractiveWorkspace {
                 output.println(session.bufferCommand(command));
             } else if (command.type() == WorkspaceCommand.Type.RUN) {
                 output.println(session.runCurrentBuffer(command.arguments()));
+            } else if (isLibrary(command.type())) {
+                output.println(session.libraryCommand(command));
             } else if (command.type() == WorkspaceCommand.Type.HISTORY) {
                 output.print(session.renderHistory());
             } else if (isMetadata(command.type())) {
@@ -92,6 +94,18 @@ public final class InteractiveWorkspace {
         );
     }
 
+    private static boolean isLibrary(WorkspaceCommand.Type type) {
+        return (
+            type == WorkspaceCommand.Type.LIB_SAVE ||
+            type == WorkspaceCommand.Type.LIB_LIST ||
+            type == WorkspaceCommand.Type.LIB_SEARCH ||
+            type == WorkspaceCommand.Type.LIB_LOAD ||
+            type == WorkspaceCommand.Type.LIB_DELETE ||
+            type == WorkspaceCommand.Type.LIB_FAVORITE ||
+            type == WorkspaceCommand.Type.LIB_UNFAVORITE
+        );
+    }
+
     public static Session defaultSession() {
         File baseDirectory = new File(System.getProperty("user.home"), ".oracle-script-cli/connections");
         ConnectionRegistry registry = new ConnectionRegistry(baseDirectory, new ProtectedSecretStore(new File(baseDirectory, "secrets")));
@@ -100,7 +114,7 @@ public final class InteractiveWorkspace {
             30
         );
         try {
-            return new Session(registry, editorStore, new DefaultWorkspaceSqlExecutor());
+            return new Session(registry, editorStore, new DefaultWorkspaceSqlExecutor(), new QueryLibraryStore());
         } catch (IOException ex) {
             throw new IllegalStateException("Could not initialize workspace session", ex);
         }
@@ -126,6 +140,7 @@ public final class InteractiveWorkspace {
         private final ConnectionRegistry registry;
         private final EditorStateStore editorStore;
         private final WorkspaceSqlExecutor executor;
+        private final QueryLibraryStore queryLibraryStore;
         private String activeConnectionName;
         private String buffer = "";
         private List<String> history = Collections.emptyList();
@@ -138,12 +153,23 @@ public final class InteractiveWorkspace {
             this.registry = null;
             this.editorStore = null;
             this.executor = new DefaultWorkspaceSqlExecutor();
+            this.queryLibraryStore = new QueryLibraryStore();
         }
 
         public Session(ConnectionRegistry registry, EditorStateStore editorStore, WorkspaceSqlExecutor executor) throws IOException {
+            this(registry, editorStore, executor, new QueryLibraryStore());
+        }
+
+        public Session(
+            ConnectionRegistry registry,
+            EditorStateStore editorStore,
+            WorkspaceSqlExecutor executor,
+            QueryLibraryStore queryLibraryStore
+        ) throws IOException {
             this.registry = registry;
             this.editorStore = editorStore;
             this.executor = executor == null ? new DefaultWorkspaceSqlExecutor() : executor;
+            this.queryLibraryStore = queryLibraryStore == null ? new QueryLibraryStore() : queryLibraryStore;
             EditorStateStore.EditorState state = editorStore.load();
             this.buffer = state.buffer();
             this.history = state.history();
@@ -490,6 +516,72 @@ public final class InteractiveWorkspace {
             }
         }
 
+        public String libraryCommand(WorkspaceCommand command) {
+            try {
+                if (command.type() == WorkspaceCommand.Type.LIB_SAVE) {
+                    return saveLibraryQuery(command);
+                }
+                if (command.type() == WorkspaceCommand.Type.LIB_LIST) {
+                    return renderLibraryEntries(queryLibraryStore.list());
+                }
+                if (command.type() == WorkspaceCommand.Type.LIB_SEARCH) {
+                    return renderLibraryEntries(queryLibraryStore.search(command.argumentText()));
+                }
+                if (command.type() == WorkspaceCommand.Type.LIB_LOAD) {
+                    return loadLibraryQuery(command);
+                }
+                if (command.type() == WorkspaceCommand.Type.LIB_DELETE) {
+                    return deleteLibraryQuery(command);
+                }
+                if (command.type() == WorkspaceCommand.Type.LIB_FAVORITE || command.type() == WorkspaceCommand.Type.LIB_UNFAVORITE) {
+                    return favoriteLibraryQuery(command);
+                }
+                return fail("library supports save, list, search, load, delete, favorite, unfavorite");
+            } catch (Exception ex) {
+                return fail(ex.getMessage());
+            }
+        }
+
+        public QueryLibraryEntry saveQueryLibraryEntry(
+            String name,
+            String sql,
+            String description,
+            List<String> tags,
+            boolean favorite,
+            boolean overwrite
+        ) throws IOException {
+            return queryLibraryStore.save(
+                name,
+                sql,
+                description,
+                tags,
+                favorite,
+                activeConnection() == null ? "" : activeConnection().environment().name(),
+                activeConnectionName == null ? "" : activeConnectionName,
+                overwrite
+            );
+        }
+
+        public List<QueryLibraryEntry> listQueryLibraryEntries() throws IOException {
+            return queryLibraryStore.list();
+        }
+
+        public List<QueryLibraryEntry> searchQueryLibraryEntries(String text) throws IOException {
+            return queryLibraryStore.search(text);
+        }
+
+        public QueryLibraryEntry loadQueryLibraryEntry(String id) throws IOException {
+            return queryLibraryStore.load(id);
+        }
+
+        public boolean deleteQueryLibraryEntry(String id) throws IOException {
+            return queryLibraryStore.delete(id);
+        }
+
+        public QueryLibraryEntry setQueryLibraryFavorite(String id, boolean favorite) throws IOException {
+            return queryLibraryStore.setFavorite(id, favorite);
+        }
+
         public String renderHistory() {
             if (history == null || history.isEmpty()) {
                 return "History is empty" + System.lineSeparator();
@@ -594,6 +686,164 @@ public final class InteractiveWorkspace {
             if (editorStore != null) {
                 editorStore.saveBuffer(buffer);
                 history = editorStore.load().history();
+            }
+        }
+
+        private String saveLibraryQuery(WorkspaceCommand command) throws IOException {
+            if (buffer == null || buffer.trim().isEmpty()) {
+                return fail("Cannot save an empty buffer");
+            }
+            ParsedLibrarySave parsed = ParsedLibrarySave.from(command.arguments());
+            QueryLibraryEntry entry = queryLibraryStore.save(
+                parsed.name,
+                buffer,
+                parsed.description,
+                parsed.tags,
+                parsed.favorite,
+                activeConnection() == null ? "" : activeConnection().environment().name(),
+                activeConnectionName == null ? "" : activeConnectionName,
+                parsed.overwrite
+            );
+            return ok("Saved query: " + entry.id() + System.lineSeparator() + QueryLibraryStore.PRIVACY_WARNING);
+        }
+
+        private String loadLibraryQuery(WorkspaceCommand command) throws IOException {
+            String id = requiredFirstArgument(command, "lib load requires <id> [--replace]");
+            QueryLibraryEntry entry = queryLibraryStore.load(id);
+            if (buffer != null && !buffer.trim().isEmpty() && !buffer.equals(entry.sql()) && !hasFlag(command.arguments(), "--replace")) {
+                return fail("Buffer has content. Re-run with --replace to load query: " + entry.id());
+            }
+            replaceBuffer(entry.sql());
+            return ok("Loaded query into buffer: " + entry.id());
+        }
+
+        private String deleteLibraryQuery(WorkspaceCommand command) throws IOException {
+            String id = requiredFirstArgument(command, "lib delete requires <id> --yes");
+            String slug = QueryLibraryStore.slug(id);
+            if (!hasFlag(command.arguments(), "--yes")) {
+                return fail("Use --yes to delete query: " + slug);
+            }
+            return queryLibraryStore.delete(id) ? ok("Deleted query: " + slug) : fail("Query not found: " + slug);
+        }
+
+        private String favoriteLibraryQuery(WorkspaceCommand command) throws IOException {
+            String id = requiredFirstArgument(command, "lib favorite requires <id>");
+            boolean favorite = command.type() == WorkspaceCommand.Type.LIB_FAVORITE;
+            QueryLibraryEntry entry = queryLibraryStore.setFavorite(id, favorite);
+            return ok("Updated favorite: " + entry.id() + " = " + favorite);
+        }
+
+        private String renderLibraryEntries(List<QueryLibraryEntry> entries) {
+            if (entries.isEmpty()) {
+                return "No saved queries";
+            }
+            StringBuilder rendered = new StringBuilder();
+            for (QueryLibraryEntry entry : entries) {
+                if (rendered.length() > 0) {
+                    rendered.append(System.lineSeparator());
+                }
+                rendered.append(entry.favorite() ? "* " : "  ");
+                rendered.append(entry.id()).append(" | ").append(entry.name()).append(" | ");
+                rendered.append(joinDisplay(entry.tags())).append(" | ").append(entry.description());
+            }
+            return rendered.toString();
+        }
+
+        private String requiredFirstArgument(WorkspaceCommand command, String message) {
+            if (command.arguments().isEmpty() || command.arguments().get(0).startsWith("--")) {
+                throw new IllegalArgumentException(message);
+            }
+            return command.arguments().get(0);
+        }
+
+        private static String joinDisplay(List<String> values) {
+            StringBuilder joined = new StringBuilder();
+            for (String value : values) {
+                if (joined.length() > 0) {
+                    joined.append(", ");
+                }
+                joined.append(value);
+            }
+            return joined.toString();
+        }
+
+        private static List<String> parseTags(String value) {
+            if (value == null || value.trim().isEmpty()) {
+                return Collections.emptyList();
+            }
+            List<String> tags = new ArrayList<>();
+            for (String tag : value.split(",")) {
+                if (!tag.trim().isEmpty()) {
+                    tags.add(tag.trim());
+                }
+            }
+            return tags;
+        }
+
+        private static final class ParsedLibrarySave {
+
+            private final String name;
+            private final String description;
+            private final List<String> tags;
+            private final boolean favorite;
+            private final boolean overwrite;
+
+            private ParsedLibrarySave(String name, String description, List<String> tags, boolean favorite, boolean overwrite) {
+                this.name = name;
+                this.description = description;
+                this.tags = tags;
+                this.favorite = favorite;
+                this.overwrite = overwrite;
+            }
+
+            private static ParsedLibrarySave from(List<String> arguments) {
+                List<String> nameParts = new ArrayList<>();
+                String description = "";
+                List<String> tags = Collections.emptyList();
+                boolean favorite = false;
+                boolean overwrite = false;
+                for (int i = 0; i < arguments.size(); i++) {
+                    String argument = arguments.get(i);
+                    if ("--desc".equals(argument) || "--description".equals(argument)) {
+                        if (i + 1 >= arguments.size()) {
+                            throw new IllegalArgumentException("--desc requires text");
+                        }
+                        List<String> descriptionParts = new ArrayList<>();
+                        while (i + 1 < arguments.size() && !arguments.get(i + 1).startsWith("--")) {
+                            descriptionParts.add(arguments.get(++i));
+                        }
+                        description = joinDisplayWithSpace(descriptionParts);
+                    } else if ("--tags".equals(argument)) {
+                        if (i + 1 >= arguments.size()) {
+                            throw new IllegalArgumentException("--tags requires comma-separated tags");
+                        }
+                        tags = parseTags(arguments.get(++i));
+                    } else if ("--favorite".equals(argument)) {
+                        favorite = true;
+                    } else if ("--overwrite".equals(argument)) {
+                        overwrite = true;
+                    } else if (argument.startsWith("--")) {
+                        throw new IllegalArgumentException("Unsupported lib save option: " + argument);
+                    } else {
+                        nameParts.add(argument);
+                    }
+                }
+                String name = joinDisplayWithSpace(nameParts);
+                if (name.trim().isEmpty()) {
+                    throw new IllegalArgumentException("lib save requires <name>");
+                }
+                return new ParsedLibrarySave(name, description, tags, favorite, overwrite);
+            }
+
+            private static String joinDisplayWithSpace(List<String> values) {
+                StringBuilder joined = new StringBuilder();
+                for (String value : values) {
+                    if (joined.length() > 0) {
+                        joined.append(' ');
+                    }
+                    joined.append(value);
+                }
+                return joined.toString();
             }
         }
 

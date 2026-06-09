@@ -47,7 +47,7 @@ public class Gui2WorkspaceLayoutTest {
         assertSame(components.root(), components.window().getComponent());
         assertTrue(components.root() instanceof Panel);
         assertTrue(components.explorer() instanceof ActionListBox);
-        assertEquals(8, components.explorer().getItemCount());
+        assertEquals(10, components.explorer().getItemCount());
         assertTrue(components.sqlEditor() instanceof TextBox);
         assertEquals("select *\nfrom users", components.sqlEditor().getText());
         assertFalse(components.sqlEditor().isReadOnly());
@@ -84,7 +84,7 @@ public class Gui2WorkspaceLayoutTest {
 
         Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout().build(state);
 
-        assertEquals(6, components.explorer().getItemCount());
+        assertEquals(8, components.explorer().getItemCount());
         assertEquals("", components.sqlEditor().getText());
         assertEquals("No results yet", components.resultsText().getText());
         assertEquals("Status: Ready | Active: none", components.statusText().getText());
@@ -198,11 +198,17 @@ public class Gui2WorkspaceLayoutTest {
         components.explorer().runSelectedItem();
         components.explorer().setSelectedIndex(5);
         components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(6);
+        components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(7);
+        components.explorer().runSelectedItem();
 
-        assertEquals("load,current,all", actions.calls);
+        assertEquals("load,save-library,open-library,current,all", actions.calls);
         assertEquals("Load SQL File (F6)", components.explorer().getItemAt(3).toString());
-        assertEquals("Export Current Page CSV (F7)", components.explorer().getItemAt(4).toString());
-        assertEquals("Export All Pages CSV (F8)", components.explorer().getItemAt(5).toString());
+        assertEquals("Save Query to Library (F9)", components.explorer().getItemAt(4).toString());
+        assertEquals("Open Query Library (F10)", components.explorer().getItemAt(5).toString());
+        assertEquals("Export Current Page CSV (F7)", components.explorer().getItemAt(6).toString());
+        assertEquals("Export All Pages CSV (F8)", components.explorer().getItemAt(7).toString());
     }
 
     @Test
@@ -248,6 +254,14 @@ public class Gui2WorkspaceLayoutTest {
 
         public void openSqlFileDialog() {
             calls = append(calls, "load");
+        }
+
+        public void openSaveQueryDialog() {
+            calls = append(calls, "save-library");
+        }
+
+        public void openQueryLibraryDialog() {
+            calls = append(calls, "open-library");
         }
 
         public void openExportDialog(ExportScope scope) {

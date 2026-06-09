@@ -117,6 +117,14 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
             openExportDialog(ExportScope.ALL_PAGES);
             return true;
         }
+        if (keyStroke.getKeyType() == KeyType.F9) {
+            openSaveQueryDialog();
+            return true;
+        }
+        if (keyStroke.getKeyType() == KeyType.F10) {
+            openQueryLibraryDialog();
+            return true;
+        }
         if (focusTarget == FocusTarget.EDITOR && isEditorTextInput(keyStroke)) {
             return handleEditorTextInput(keyStroke);
         }
@@ -214,6 +222,225 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
             }
         );
         addOrRenderWindow(window, messages().exportTitle(scope));
+    }
+
+    public void openSaveQueryDialog() {
+        final TextBox name = new TextBox(new TerminalSize(42, 1));
+        final TextBox description = new TextBox(new TerminalSize(42, 1));
+        final TextBox tags = new TextBox(new TerminalSize(42, 1));
+        final TextBox favorite = new TextBox(new TerminalSize(8, 1));
+        final BasicWindow[] dialog = new BasicWindow[1];
+        Panel fields = new Panel(new GridLayout(2));
+        fields.addComponent(new Label(messages().name()));
+        fields.addComponent(name);
+        fields.addComponent(new Label(messages().description()));
+        fields.addComponent(description);
+        fields.addComponent(new Label(messages().tags()));
+        fields.addComponent(tags);
+        fields.addComponent(new Label(messages().favorite()));
+        fields.addComponent(favorite);
+        Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        buttons.addComponent(
+            new Button(
+                messages().save(),
+                new Runnable() {
+                    public void run() {
+                        if (
+                            saveCurrentQueryToLibrary(
+                                name.getText(),
+                                description.getText(),
+                                tags.getText(),
+                                isTruthy(favorite.getText()),
+                                false
+                            )
+                        ) {
+                            closeDialog(dialog[0]);
+                        }
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().cancel(),
+                new Runnable() {
+                    public void run() {
+                        closeDialog(dialog[0]);
+                    }
+                }
+            )
+        );
+        Panel root = new Panel(new LinearLayout(Direction.VERTICAL));
+        root.addComponent(new Label(QueryLibraryStore.PRIVACY_WARNING));
+        root.addComponent(fields);
+        root.addComponent(buttons);
+        BasicWindow window = new BasicWindow(messages().saveQueryTitle());
+        dialog[0] = window;
+        window.setHints(Arrays.asList(Window.Hint.CENTERED, Window.Hint.MODAL));
+        window.setComponent(root);
+        addOrRenderWindow(window, messages().saveQueryTitle());
+    }
+
+    public void openQueryLibraryDialog() {
+        final TextBox search = new TextBox(new TerminalSize(42, 1));
+        final TextBox id = new TextBox(new TerminalSize(42, 1));
+        final BasicWindow[] dialog = new BasicWindow[1];
+        Panel root = new Panel(new LinearLayout(Direction.VERTICAL));
+        root.addComponent(new Label(renderQueryLibraryEntries(safeListQueryLibrary())));
+        Panel fields = new Panel(new GridLayout(2));
+        fields.addComponent(new Label(messages().search()));
+        fields.addComponent(search);
+        fields.addComponent(new Label("ID"));
+        fields.addComponent(id);
+        root.addComponent(fields);
+        Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        buttons.addComponent(
+            new Button(
+                messages().search(),
+                new Runnable() {
+                    public void run() {
+                        searchQueryLibrary(search.getText());
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().load(),
+                new Runnable() {
+                    public void run() {
+                        loadQueryFromLibrary(id.getText(), false);
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().delete(),
+                new Runnable() {
+                    public void run() {
+                        deleteQueryFromLibrary(id.getText(), false);
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().favorite(),
+                new Runnable() {
+                    public void run() {
+                        setQueryLibraryFavorite(id.getText(), true);
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().unfavorite(),
+                new Runnable() {
+                    public void run() {
+                        setQueryLibraryFavorite(id.getText(), false);
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().close(),
+                new Runnable() {
+                    public void run() {
+                        closeDialog(dialog[0]);
+                    }
+                }
+            )
+        );
+        root.addComponent(buttons);
+        BasicWindow window = new BasicWindow(messages().queryLibraryTitle());
+        dialog[0] = window;
+        window.setHints(Arrays.asList(Window.Hint.CENTERED, Window.Hint.MODAL));
+        window.setComponent(root);
+        addOrRenderWindow(window, messages().queryLibraryTitle());
+    }
+
+    public boolean saveCurrentQueryToLibrary(String name, String description, String tags, boolean favorite, boolean overwrite) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        try {
+            QueryLibraryEntry entry = session.saveQueryLibraryEntry(
+                name,
+                current.sqlEditor().getText(),
+                description,
+                splitCsv(tags),
+                favorite,
+                overwrite
+            );
+            current.resultsText().setText("Saved query: " + entry.id() + System.lineSeparator() + QueryLibraryStore.PRIVACY_WARNING);
+            session.replaceBuffer(current.sqlEditor().getText());
+            editorCleanSnapshot = current.sqlEditor().getText();
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
+    public boolean searchQueryLibrary(String text) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        try {
+            current.resultsText().setText(renderQueryLibraryEntries(session.searchQueryLibraryEntries(text)));
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
+    public boolean loadQueryFromLibrary(String id, boolean replaceDirty) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        try {
+            QueryLibraryEntry entry = session.loadQueryLibraryEntry(id);
+            if (isDirty(current) && !replaceDirty) {
+                current.resultsText().setText(messages().replaceDirtyEditorConfirmation());
+                return false;
+            }
+            current.sqlEditor().setText(entry.sql());
+            current.sqlEditor().setCaretPosition(0, 0);
+            session.replaceBuffer(entry.sql());
+            editorCleanSnapshot = entry.sql();
+            current.resultsText().setText("Loaded query into editor: " + entry.id());
+            refreshEditorDiagnostics(current);
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
+    public boolean deleteQueryFromLibrary(String id, boolean confirmed) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        try {
+            String slug = QueryLibraryStore.slug(id);
+            if (!confirmed) {
+                current.resultsText().setText("Delete saved query: " + slug + "?");
+                return false;
+            }
+            current.resultsText().setText(session.deleteQueryLibraryEntry(slug) ? "Deleted query: " + slug : "Query not found: " + slug);
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
+    public boolean setQueryLibraryFavorite(String id, boolean favorite) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        try {
+            QueryLibraryEntry entry = session.setQueryLibraryFavorite(id, favorite);
+            current.resultsText().setText("Updated favorite: " + entry.id() + " = " + favorite);
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
     }
 
     private boolean beginExportFromDialog(String typedPath, ExportScope scope, BasicWindow pathDialog) {
@@ -601,6 +828,67 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         return schemas;
     }
 
+    private static List<String> splitCsv(String value) {
+        List<String> values = new ArrayList<String>();
+        if (value == null || value.trim().isEmpty()) {
+            return values;
+        }
+        for (String token : value.split(",")) {
+            String trimmed = token.trim();
+            if (!trimmed.isEmpty()) {
+                values.add(trimmed);
+            }
+        }
+        return values;
+    }
+
+    private static boolean isTruthy(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return "true".equals(normalized) || "yes".equals(normalized) || "y".equals(normalized) || "1".equals(normalized);
+    }
+
+    private List<QueryLibraryEntry> safeListQueryLibrary() {
+        try {
+            return session.listQueryLibraryEntries();
+        } catch (Exception ex) {
+            ensureBuilt().resultsText().setText(ex.getMessage());
+            return new ArrayList<QueryLibraryEntry>();
+        }
+    }
+
+    private static String renderQueryLibraryEntries(List<QueryLibraryEntry> entries) {
+        if (entries == null || entries.isEmpty()) {
+            return "No saved queries";
+        }
+        StringBuilder rendered = new StringBuilder();
+        for (QueryLibraryEntry entry : entries) {
+            if (rendered.length() > 0) {
+                rendered.append(System.lineSeparator());
+            }
+            rendered.append(entry.favorite() ? "* " : "  ");
+            rendered.append(entry.id()).append(" | ").append(entry.name()).append(" | ");
+            rendered.append(joinComma(entry.tags())).append(" | ").append(entry.description());
+        }
+        return rendered.toString();
+    }
+
+    private static String joinComma(List<String> values) {
+        StringBuilder joined = new StringBuilder();
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (joined.length() > 0) {
+                joined.append(", ");
+            }
+            joined.append(value);
+        }
+        return joined.toString();
+    }
+
     private static String defaultJdbcUrl(DatabaseType databaseType) {
         if (databaseType == DatabaseType.POSTGRESQL) {
             return "jdbc:postgresql://localhost:5432/postgres";
@@ -854,6 +1142,8 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
             keyType == KeyType.F6 ||
             keyType == KeyType.F7 ||
             keyType == KeyType.F8 ||
+            keyType == KeyType.F9 ||
+            keyType == KeyType.F10 ||
             keyType == KeyType.Escape ||
             (keyStroke.isShiftDown() && keyType == KeyType.Tab) ||
             (keyStroke.isCtrlDown() &&

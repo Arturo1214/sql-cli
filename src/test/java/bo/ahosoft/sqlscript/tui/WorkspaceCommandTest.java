@@ -58,6 +58,38 @@ public class WorkspaceCommandTest {
     }
 
     @Test
+    public void parsesQueryLibraryCommandsWithAliasesAndArguments() {
+        WorkspaceCommand save = WorkspaceCommand.parse("lib save Monthly Sales --tags finance,month-end --favorite");
+        WorkspaceCommand list = WorkspaceCommand.parse("library list");
+        WorkspaceCommand search = WorkspaceCommand.parse("lib search finance reports");
+        WorkspaceCommand load = WorkspaceCommand.parse("library load monthly-sales --replace");
+        WorkspaceCommand delete = WorkspaceCommand.parse("lib delete monthly-sales --yes");
+        WorkspaceCommand favorite = WorkspaceCommand.parse("lib favorite monthly-sales");
+        WorkspaceCommand unfavorite = WorkspaceCommand.parse("library unfavorite monthly-sales");
+
+        assertEquals(WorkspaceCommand.Type.LIB_SAVE, save.type());
+        assertEquals(Arrays.asList("Monthly", "Sales", "--tags", "finance,month-end", "--favorite"), save.arguments());
+        assertEquals("Monthly Sales --tags finance,month-end --favorite", save.argumentText());
+        assertEquals(WorkspaceCommand.Type.LIB_LIST, list.type());
+        assertEquals(WorkspaceCommand.Type.LIB_SEARCH, search.type());
+        assertEquals("finance reports", search.argumentText());
+        assertEquals(WorkspaceCommand.Type.LIB_LOAD, load.type());
+        assertEquals(Arrays.asList("monthly-sales", "--replace"), load.arguments());
+        assertEquals(WorkspaceCommand.Type.LIB_DELETE, delete.type());
+        assertEquals(WorkspaceCommand.Type.LIB_FAVORITE, favorite.type());
+        assertEquals(WorkspaceCommand.Type.LIB_UNFAVORITE, unfavorite.type());
+    }
+
+    @Test
+    public void rejectsUnknownQueryLibrarySubcommandsAtDispatchTime() {
+        WorkspaceCommand unknown = WorkspaceCommand.parse("lib export monthly-sales");
+
+        assertEquals(WorkspaceCommand.Type.UNKNOWN, unknown.type());
+        assertEquals(Arrays.asList("export", "monthly-sales"), unknown.arguments());
+        assertEquals("export monthly-sales", unknown.argumentText());
+    }
+
+    @Test
     public void preservesRemainderForSqlBufferAndExplainCommands() {
         WorkspaceCommand buffer = WorkspaceCommand.parse("buffer set select * from users where name = 'Ada Lovelace'");
         WorkspaceCommand explain = WorkspaceCommand.parse("explain select * from users where active = true");

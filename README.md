@@ -29,6 +29,7 @@ The shaded executable JAR is generated at `target/oracle-script-cli.jar` with ma
 | Connections           | Saved connections with environment labels, active selection, and Oracle/PostgreSQL wizards. |
 | SQL editor            | Editable SQL buffer with non-destructive diagnostics and suggestions.                       |
 | Metadata              | Database-neutral commands: `tables`, `describe <table>`, `indexes <table>`.                 |
+| Query library         | Local named SQL snippets with list/search/load/delete/favorite workflows.                   |
 | Results               | Row numbers, horizontal/vertical scrolling, DB-level pagination for SELECT-like queries.    |
 | i18n                  | English/Spanish in-session UI switching; command keywords remain English.                   |
 | License               | MIT.                                                                                        |
@@ -68,6 +69,8 @@ The compact fallback accepts text commands such as `help`, `connections`, `use <
 | `Tab` / `Shift+Tab`                   | Cycle focus through menu, editor, results, and status areas.                                 |
 | `F5` or `Ctrl+R`                      | Execute the current SQL buffer or metadata command.                                          |
 | `F6`                                  | Load a `.sql` file from a typed server filesystem path into the editor.                      |
+| `F9`                                  | Save the current SQL editor text to the local query library.                                 |
+| `F10`                                 | Open/search/load the local query library.                                                    |
 | `F7`                                  | Export the current visible result page as CSV.                                               |
 | `F8`                                  | Export all result pages as CSV after confirmation.                                           |
 | `Enter` in the menu                   | Select the active connection/action; selecting a saved connection moves focus to the editor. |
@@ -83,9 +86,31 @@ The compact fallback accepts text commands such as `help`, `connections`, `use <
 Support workflows are terminal-only and SSH-friendly. Paths are typed as server filesystem paths, so they work the same in a local shell and over SSH. No desktop file picker, browser download, GUI-native clipboard flow, or desktop-only interaction is required.
 
 - `F6` prompts for a `.sql` file path and loads it into the SQL editor. If the editor is dirty, confirm before replacing the current buffer.
+- `F9` prompts for query name, description, comma-separated tags, and favorite flag, then saves the current editor SQL.
+- `F10` opens a keyboard-only Query library dialog for list/search/load/delete/favorite workflows.
 - `F7` prompts for an export path and writes the current visible result page as CSV, preserving headers and column order.
 - `F8` prompts for an export path and asks for confirmation before exporting all paginated result pages as CSV.
 - Existing export targets require overwrite confirmation. Missing parent directories, directory targets, and permission errors are reported without treating partial output as success.
+
+### Query library
+
+The Query library stores named SQL snippets locally at `~/.oracle-script-cli/query-library.properties`. Entries include name, SQL text, description, tags, timestamps, favorite status, and the active environment/connection labels when saved.
+
+Terminal fallback commands use English keywords in every UI language:
+
+```text
+lib save <name> [--desc <text>] [--tags support,qa] [--favorite] [--overwrite]
+lib list
+lib search <text>
+lib load <id> --replace
+lib delete <id> --yes
+lib favorite <id>
+lib unfavorite <id>
+```
+
+Saved SQL may contain sensitive data. Review query text before storing shared or regulated information. The library file is local text storage and applies user-only permissions where the operating system supports them.
+
+Loading a query never executes it. It only replaces the editor/buffer after dirty-buffer confirmation; any later execution still goes through SafetyGuard and the active environment confirmation rules.
 
 ## Connection Management
 

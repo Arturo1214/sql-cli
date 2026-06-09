@@ -294,24 +294,24 @@ public class Gui2WorkspaceControllerTest {
         assertEquals("Status: Ready | Active: local [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("F1/? help"));
         assertFalse(components.helpText().getText().contains("Ctrl+H help"));
-        assertEquals("Language: English", components.explorer().getItemAt(7).toString());
+        assertEquals("Language: English", components.explorer().getItemAt(9).toString());
 
-        components.explorer().setSelectedIndex(7);
+        components.explorer().setSelectedIndex(9);
         controller.handleEnter();
 
         assertEquals("Estado: Listo | Activa: local [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("F1/? ayuda"));
         assertFalse(components.helpText().getText().contains("Ctrl+H ayuda"));
-        assertEquals("Idioma: Espanol", components.explorer().getItemAt(7).toString());
+        assertEquals("Idioma: Espanol", components.explorer().getItemAt(9).toString());
         assertTrue(hasLabel(components.root(), "Editor SQL"));
         assertTrue(hasLabel(components.root(), "Resultados / Logs"));
         assertEquals("SPANISH", controller.languageName());
 
-        components.explorer().setSelectedIndex(7);
+        components.explorer().setSelectedIndex(9);
         controller.handleEnter();
 
         assertEquals("Status: Ready | Active: local [DEV]", components.statusText().getText());
-        assertEquals("Language: English", components.explorer().getItemAt(7).toString());
+        assertEquals("Language: English", components.explorer().getItemAt(9).toString());
         assertTrue(hasLabel(components.root(), "SQL Editor"));
         assertTrue(hasLabel(components.root(), "Results / Logs"));
         assertEquals("ENGLISH", controller.languageName());
@@ -323,7 +323,7 @@ public class Gui2WorkspaceControllerTest {
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
-        components.explorer().setSelectedIndex(7);
+        components.explorer().setSelectedIndex(9);
         controller.handleEnter();
 
         components.sqlEditor().setText("tables user");
@@ -761,6 +761,104 @@ public class Gui2WorkspaceControllerTest {
     }
 
     @Test
+    public void f9OpensTerminalSaveDialogAndSavesCurrentSqlWithoutExecutingIt() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select * from customers");
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F9)));
+        assertEquals("Save Query to Library", textGUI.lastAddedWindow.getTitle());
+        assertEquals(4, countComponents(textGUI.lastAddedWindow.getComponent(), TextBox.class));
+        assertTrue(hasLabel(textGUI.lastAddedWindow.getComponent(), "Name"));
+        assertTrue(hasLabel(textGUI.lastAddedWindow.getComponent(), "Description"));
+        assertTrue(hasLabel(textGUI.lastAddedWindow.getComponent(), "Tags"));
+        assertTrue(hasLabel(textGUI.lastAddedWindow.getComponent(), "Favorite"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Save"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Cancel"));
+
+        assertTrue(controller.saveCurrentQueryToLibrary("Customer List", "support lookup", "support,customers", true, false));
+
+        assertEquals(null, executor.statement);
+        assertTrue(components.resultsText().getText().contains("Saved query: customer-list"));
+        assertTrue(components.resultsText().getText().contains("Saved SQL may contain sensitive data"));
+    }
+
+    @Test
+    public void f10OpensKeyboardLibraryDialogAndSearchListsMetadataOnly() throws Exception {
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select * from incidents");
+        assertTrue(controller.saveCurrentQueryToLibrary("Incident Search", "support queue", "support,urgent", false, false));
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F10)));
+
+        assertEquals("Query Library", textGUI.lastAddedWindow.getTitle());
+        assertTrue(
+            hasLabelContaining(
+                textGUI.lastAddedWindow.getComponent(),
+                "incident-search | Incident Search | support, urgent | support queue"
+            )
+        );
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Search"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Load"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Delete"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Favorite"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Unfavorite"));
+
+        assertTrue(controller.searchQueryLibrary("urgent"));
+        assertTrue(components.resultsText().getText().contains("incident-search | Incident Search | support, urgent | support queue"));
+        assertFalse(components.resultsText().getText().contains("select * from incidents"));
+    }
+
+    @Test
+    public void loadingQueryRequiresDirtyConfirmationAndDoesNotExecuteDangerousSql() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.sqlEditor().setText("drop table customers");
+        assertTrue(controller.saveCurrentQueryToLibrary("Dangerous", "manual review", "risk", false, false));
+        components.sqlEditor().setText("select dirty");
+
+        assertFalse(controller.loadQueryFromLibrary("dangerous", false));
+        assertEquals("select dirty", components.sqlEditor().getText());
+        assertTrue(components.resultsText().getText().contains("Replace current editor content"));
+
+        assertTrue(controller.loadQueryFromLibrary("dangerous", true));
+        assertEquals("drop table customers", components.sqlEditor().getText());
+        assertEquals(null, executor.statement);
+        assertTrue(components.resultsText().getText().contains("Loaded query into editor: dangerous"));
+    }
+
+    @Test
+    public void deleteAndFavoriteQueryRequireKeyboardActionsAndConfirmation() throws Exception {
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.sqlEditor().setText("select * from tickets");
+        assertTrue(controller.saveCurrentQueryToLibrary("Ticket Search", "queue", "support", false, false));
+
+        assertTrue(controller.setQueryLibraryFavorite("ticket-search", true));
+        assertTrue(components.resultsText().getText().contains("Updated favorite: ticket-search = true"));
+        assertTrue(controller.searchQueryLibrary("ticket"));
+        assertTrue(components.resultsText().getText().contains("* ticket-search"));
+
+        assertFalse(controller.deleteQueryFromLibrary("ticket-search", false));
+        assertTrue(components.resultsText().getText().contains("Delete saved query: ticket-search?"));
+        assertTrue(controller.deleteQueryFromLibrary("ticket-search", true));
+        assertTrue(components.resultsText().getText().contains("Deleted query: ticket-search"));
+        assertTrue(controller.searchQueryLibrary("ticket"));
+        assertTrue(components.resultsText().getText().contains("No saved queries"));
+    }
+
+    @Test
     public void submitConnectionDialogCreatesConnectionAndRebuildsExplorerStatus() throws Exception {
         CapturingExecutor executor = new CapturingExecutor();
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
@@ -780,7 +878,7 @@ public class Gui2WorkspaceControllerTest {
 
         assertTrue(result.created());
         assertEquals("pg", result.config().username());
-        assertEquals(9, components.explorer().getItemCount());
+        assertEquals(11, components.explorer().getItemCount());
         assertEquals("Status: Connection saved: analytics | Active: analytics [DEV]", components.statusText().getText());
     }
 
@@ -799,14 +897,15 @@ public class Gui2WorkspaceControllerTest {
 
         assertFalse(cancelled.created());
         assertEquals("Connection creation cancelled", components.resultsText().getText());
-        assertEquals(8, components.explorer().getItemCount());
+        assertEquals(10, components.explorer().getItemCount());
     }
 
     private InteractiveWorkspace.Session session(CapturingExecutor executor) throws Exception {
         InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
             null,
             new EditorStateStore(temporaryFolder.newFile("editor.properties"), 5),
-            executor
+            executor,
+            new QueryLibraryStore(temporaryFolder.newFile("query-library.properties"), java.time.Clock.systemUTC())
         );
         session.addConnection("local", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "secret"));
         session.addConnection(

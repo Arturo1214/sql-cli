@@ -57,8 +57,8 @@ public final class TuiMessages {
 
     public String helpHint() {
         return language == TuiLanguage.SPANISH
-            ? "Ctrl+R ejecutar | F6 abrir SQL | F7/F8 exportar CSV | F1/? ayuda | Tab foco | Esc cerrar | diagnosticos SQL"
-            : "Ctrl+R run | F6 open SQL | F7/F8 export CSV | F1/? help | Tab focus | Esc close | SQL diagnostics";
+            ? "Ctrl+R ejecutar | F6 abrir SQL | F9 guardar consulta | F10 biblioteca | F7/F8 exportar CSV | F1/? ayuda | Tab foco | Esc cerrar | diagnosticos SQL"
+            : "Ctrl+R run | F6 open SQL | F9 save query | F10 library | F7/F8 export CSV | F1/? help | Tab focus | Esc close | SQL diagnostics";
     }
 
     public String statusText(WorkspaceDashboardRenderer.DashboardState state) {
@@ -168,6 +168,8 @@ public final class TuiMessages {
                 "Tab/Shift+Tab: mover foco\n" +
                 "F5/Ctrl+R: ejecutar SQL o comando\n" +
                 "F6: abrir archivo .sql desde una ruta del servidor\n" +
+                "F9: guardar el SQL actual en la biblioteca de consultas\n" +
+                "F10: abrir/buscar la biblioteca de consultas\n" +
                 "F7: exportar pagina actual como CSV\n" +
                 "F8: exportar todas las paginas como CSV con confirmacion\n" +
                 "Editor: resaltado SQL y diagnosticos no destructivos\n" +
@@ -177,6 +179,8 @@ public final class TuiMessages {
                 "Conexiones: Nueva conexion Oracle, Nueva conexion PostgreSQL\n" +
                 "Enter: seleccionar conexion guardada o abrir accion seleccionada\n" +
                 "Comandos de metadatos: tables, describe <table>, indexes <table>\n" +
+                "Biblioteca: lib save <name>, lib list, lib search <text>, lib load <id> --replace, lib delete <id> --yes\n" +
+                "El SQL guardado puede contener datos sensibles. Cargar una consulta no la ejecuta.\n" +
                 "Idioma: usa la accion Idioma/Espanol en el panel izquierdo\n" +
                 "Cerrar ayuda: Esc o Enter en Cerrar"
             );
@@ -189,6 +193,8 @@ public final class TuiMessages {
             "Tab/Shift+Tab: move focus\n" +
             "F5/Ctrl+R: execute SQL or command\n" +
             "F6: open a .sql file from a server path\n" +
+            "F9: save current SQL to the query library\n" +
+            "F10: open/search the query library\n" +
             "F7: export current result page as CSV\n" +
             "F8: export all result pages as CSV with confirmation\n" +
             "Editor: SQL highlighting and non-destructive diagnostics\n" +
@@ -198,6 +204,8 @@ public final class TuiMessages {
             "Connections: New Oracle connection, New PostgreSQL connection\n" +
             "Enter: select saved connection or open selected action\n" +
             "Metadata commands: tables, describe <table>, indexes <table>\n" +
+            "Query library: lib save <name>, lib list, lib search <text>, lib load <id> --replace, lib delete <id> --yes\n" +
+            "Saved SQL may contain sensitive data. Loading a query does not execute it.\n" +
             "Language: use the Language action in the left pane\n" +
             "Close help: Esc or Enter on Close"
         );
@@ -209,6 +217,50 @@ public final class TuiMessages {
 
     String loadSqlFileAction() {
         return language == TuiLanguage.SPANISH ? "Abrir archivo SQL (F6)" : "Load SQL File (F6)";
+    }
+
+    String saveQueryToLibraryAction() {
+        return language == TuiLanguage.SPANISH ? "Guardar consulta en biblioteca (F9)" : "Save Query to Library (F9)";
+    }
+
+    String openQueryLibraryAction() {
+        return language == TuiLanguage.SPANISH ? "Abrir biblioteca de consultas (F10)" : "Open Query Library (F10)";
+    }
+
+    String queryLibraryTitle() {
+        return language == TuiLanguage.SPANISH ? "Biblioteca de consultas" : "Query Library";
+    }
+
+    String saveQueryTitle() {
+        return language == TuiLanguage.SPANISH ? "Guardar consulta en biblioteca" : "Save Query to Library";
+    }
+
+    String description() {
+        return language == TuiLanguage.SPANISH ? "Descripcion" : "Description";
+    }
+
+    String tags() {
+        return language == TuiLanguage.SPANISH ? "Etiquetas" : "Tags";
+    }
+
+    String favorite() {
+        return language == TuiLanguage.SPANISH ? "Favorita" : "Favorite";
+    }
+
+    String search() {
+        return language == TuiLanguage.SPANISH ? "Buscar" : "Search";
+    }
+
+    String load() {
+        return language == TuiLanguage.SPANISH ? "Cargar" : "Load";
+    }
+
+    String delete() {
+        return language == TuiLanguage.SPANISH ? "Eliminar" : "Delete";
+    }
+
+    String unfavorite() {
+        return language == TuiLanguage.SPANISH ? "Quitar favorita" : "Unfavorite";
     }
 
     String exportCurrentPageAction() {

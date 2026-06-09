@@ -36,6 +36,13 @@ public final class WorkspaceCommand {
         COUNT,
         SAMPLE,
         HISTORY,
+        LIB_SAVE,
+        LIB_LIST,
+        LIB_SEARCH,
+        LIB_LOAD,
+        LIB_DELETE,
+        LIB_FAVORITE,
+        LIB_UNFAVORITE,
         UNKNOWN,
     }
 
@@ -122,6 +129,9 @@ public final class WorkspaceCommand {
         if ("history".equals(command)) {
             return new WorkspaceCommand(Type.HISTORY, tokens, argumentText);
         }
+        if ("lib".equals(command) || "library".equals(command)) {
+            return parseLibraryCommand(tokens, argumentText);
+        }
         return new WorkspaceCommand(Type.UNKNOWN, tokens, argumentText);
     }
 
@@ -153,5 +163,36 @@ public final class WorkspaceCommand {
             joined.append(value);
         }
         return joined.toString();
+    }
+
+    private static WorkspaceCommand parseLibraryCommand(List<String> tokens, String argumentText) {
+        if (tokens.isEmpty()) {
+            return new WorkspaceCommand(Type.UNKNOWN, tokens, argumentText);
+        }
+        String subcommand = tokens.get(0).toLowerCase(Locale.ROOT);
+        List<String> arguments = new ArrayList<>(tokens.subList(1, tokens.size()));
+        String remaining = join(arguments);
+        if ("save".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_SAVE, arguments, remaining);
+        }
+        if ("list".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_LIST, arguments, remaining);
+        }
+        if ("search".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_SEARCH, arguments, remaining);
+        }
+        if ("load".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_LOAD, arguments, remaining);
+        }
+        if ("delete".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_DELETE, arguments, remaining);
+        }
+        if ("favorite".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_FAVORITE, arguments, remaining);
+        }
+        if ("unfavorite".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_UNFAVORITE, arguments, remaining);
+        }
+        return new WorkspaceCommand(Type.UNKNOWN, tokens, argumentText);
     }
 }
