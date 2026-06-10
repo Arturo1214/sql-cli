@@ -65,5 +65,7 @@ public class ReadmeSupportWorkflowTest {
         assertTrue(readme.contains("--unsafe"));
         assertTrue(readme.contains("CLI mode only"));
         assertTrue(readme.contains("type the active connection name exactly"));
+        assertTrue(readme.contains("UPDATE and DELETE require a top-level WHERE"));
+        assertTrue(readme.contains("DROP, TRUNCATE, and ALTER keep the existing confirmation behavior"));
     }
 }

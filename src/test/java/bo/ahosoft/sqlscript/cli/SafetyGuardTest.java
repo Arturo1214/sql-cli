@@ -27,8 +27,31 @@ public class SafetyGuardTest {
         assertBlocked("drop table users", ConnectionEnvironment.DEV, "local", false, false, null, "dangerous");
         assertBlocked("truncate table users", ConnectionEnvironment.DEV, "local", false, false, null, "dangerous");
         assertBlocked("alter table users add active number", ConnectionEnvironment.DEV, "local", false, false, null, "dangerous");
-        assertBlocked("update users set active = 0", ConnectionEnvironment.DEV, "local", false, false, null, "dangerous");
-        assertBlocked("delete from users", ConnectionEnvironment.DEV, "local", false, false, null, "dangerous");
+        assertBlocked("update users set active = 0 where id = 1", ConnectionEnvironment.DEV, "local", false, false, null, "dangerous");
+        assertBlocked("delete from users where id = 1", ConnectionEnvironment.DEV, "local", false, false, null, "dangerous");
+    }
+
+    @Test
+    public void blocksUpdateAndDeleteWithoutTopLevelWhereBeforeUnsafeOrConfirmation() {
+        assertBlocked(
+            "update users set active = 0",
+            ConnectionEnvironment.DEV,
+            "local",
+            true,
+            false,
+            "YES",
+            SafetyGuard.MISSING_WHERE_MESSAGE
+        );
+        assertBlocked("delete from users", ConnectionEnvironment.QA, "qa-db", false, true, null, SafetyGuard.MISSING_WHERE_MESSAGE);
+        assertBlocked(
+            "update users set id = (select id from other where active = 1)",
+            ConnectionEnvironment.DEV,
+            "local",
+            true,
+            false,
+            "YES",
+            SafetyGuard.MISSING_WHERE_MESSAGE
+        );
     }
 
     @Test
@@ -39,12 +62,12 @@ public class SafetyGuardTest {
 
     @Test
     public void allowsDestructiveSqlWithForceAndExactTypedConfirmation() {
-        SafetyGuard.requireSafe("update users set enabled = 0", ConnectionEnvironment.DEV, "local", true, false, "YES");
+        SafetyGuard.requireSafe("update users set enabled = 0 where id = 10", ConnectionEnvironment.DEV, "local", true, false, "YES");
     }
 
     @Test
     public void unsafeBypassesNonProdDangerousSql() {
-        SafetyGuard.requireSafe("delete from users", ConnectionEnvironment.QA, "qa-db", false, true, null);
+        SafetyGuard.requireSafe("delete from users where id = 10", ConnectionEnvironment.QA, "qa-db", false, true, null);
     }
 
     @Test

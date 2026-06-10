@@ -10,6 +10,7 @@ import bo.ahosoft.sqlscript.tui.*;
 public final class SafetyGuard {
 
     private static final String REQUIRED_CONFIRMATION = "YES";
+    public static final String MISSING_WHERE_MESSAGE = "Safety mode blocked UPDATE/DELETE without a top-level WHERE clause.";
 
     private SafetyGuard() {}
 
@@ -25,6 +26,7 @@ public final class SafetyGuard {
         boolean unsafe,
         String confirmRisk
     ) {
+        MutationWhereValidator.requireTopLevelWhereForMutations(script);
         if (!isDestructive(script)) {
             return;
         }

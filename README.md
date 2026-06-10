@@ -119,8 +119,10 @@ Loading a query never executes it. It only replaces the editor/buffer after dirt
 
 The TUI keeps SafetyGuard enabled by default. When you explicitly run dangerous SQL from the editor with `F5` or `Ctrl+R` (`UPDATE`, `DELETE`, `DROP`, `TRUNCATE`, `ALTER`, and other SafetyGuard-blocked statements), the workspace opens a keyboard-only confirmation modal instead of executing immediately.
 
+- UPDATE and DELETE require a top-level WHERE clause before any confirmation can appear. A WHERE inside a comment, string, parenthesized expression, or subquery does not satisfy this guard.
 - Non-PROD connections require typing `RUN`, then activating `Run anyway`. The confirmation applies to the current statement once only.
 - PROD connections require you to type the active connection name exactly, then activate `Run anyway`. A mismatch or cancel does not execute anything.
+- DROP, TRUNCATE, and ALTER keep the existing confirmation behavior; they do not require a WHERE clause.
 - Loading files, saved queries, favorites, or rendered templates never auto-executes SQL. Loaded text must still be run manually and still goes through this confirmation flow.
 - `--unsafe` and `--confirm-risk` are CLI mode only. Use no arguments or `workspace` to open the TUI; `java -jar target/oracle-script-cli.jar --unsafe` remains a CLI invocation and does not silently launch the workspace.
 

@@ -2,6 +2,7 @@ package bo.ahosoft.sqlscript.tui;
 
 import static org.junit.Assert.assertTrue;
 
+import bo.ahosoft.sqlscript.cli.SafetyGuard;
 import org.junit.Test;
 
 public class TuiMessagesTest {
@@ -32,6 +33,8 @@ public class TuiMessagesTest {
         assertTrue(messages.openQueryLibraryAction().contains("F10"));
         assertTrue(messages.dangerousSqlConfirmationTitle(false).contains("Dangerous SQL confirmation"));
         assertTrue(messages.dangerousSqlConfirmationMessage("UPDATE", "RUN", false).contains("Type RUN"));
+        assertTrue(messages.helpBody().contains("UPDATE/DELETE require a top-level WHERE"));
+        assertTrue(messages.localizeStatus(SafetyGuard.MISSING_WHERE_MESSAGE).contains("top-level WHERE"));
         assertTrue(messages.runAnyway().contains("Run anyway"));
         assertTrue(messages.dangerousSqlCanceled().contains("Dangerous SQL execution canceled"));
     }
@@ -62,6 +65,8 @@ public class TuiMessagesTest {
         assertTrue(messages.openQueryLibraryAction().contains("F10"));
         assertTrue(messages.dangerousSqlConfirmationTitle(true).contains("Confirmacion SQL peligrosa en PROD"));
         assertTrue(messages.dangerousSqlConfirmationMessage("DROP", "prod-main", true).contains("Escribe prod-main"));
+        assertTrue(messages.helpBody().contains("UPDATE/DELETE requieren WHERE de nivel superior"));
+        assertTrue(messages.localizeStatus(SafetyGuard.MISSING_WHERE_MESSAGE).contains("WHERE de nivel superior"));
         assertTrue(messages.runAnyway().contains("Ejecutar igual"));
         assertTrue(messages.dangerousSqlCanceled().contains("Ejecucion SQL peligrosa cancelada"));
     }

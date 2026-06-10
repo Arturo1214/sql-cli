@@ -125,11 +125,19 @@ public class OracleScriptCliSmokeTest {
 
     @Test
     public void workspaceDryRunRequiresTypedConfirmationForDestructiveStatement() throws Exception {
-        ProcessResult blocked = runCli("run-current", "--buffer", "delete from users", "--cursor", "0", "--dry-run", "--force");
+        ProcessResult blocked = runCli(
+            "run-current",
+            "--buffer",
+            "delete from users where id = 1",
+            "--cursor",
+            "0",
+            "--dry-run",
+            "--force"
+        );
         ProcessResult confirmed = runCli(
             "run-current",
             "--buffer",
-            "delete from users",
+            "delete from users where id = 1",
             "--cursor",
             "0",
             "--dry-run",
@@ -141,7 +149,51 @@ public class OracleScriptCliSmokeTest {
         assertEquals(blocked.output, 2, blocked.exitCode);
         assertTrue(blocked.output.contains("--confirm-risk YES"));
         assertEquals(confirmed.output, 0, confirmed.exitCode);
-        assertTrue(confirmed.output.contains("delete from users"));
+        assertTrue(confirmed.output.contains("delete from users where id = 1"));
+    }
+
+    @Test
+    public void cliBlocksUpdateAndDeleteWithoutTopLevelWhereBeforeConfirmation() throws Exception {
+        File configFile = File.createTempFile("oracle-script-cli-where-required", ".properties");
+        ConfigStore.save(configFile, new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "secret"));
+
+        ProcessResult runCurrent = runCli(
+            "run-current",
+            "--buffer",
+            "delete from users",
+            "--dry-run",
+            "--unsafe",
+            "--confirm-risk",
+            "YES",
+            "--config",
+            configFile.getAbsolutePath()
+        );
+        ProcessResult exec = runCli(
+            "exec",
+            "update users set active = 0",
+            "--unsafe",
+            "--confirm-risk",
+            "YES",
+            "--config",
+            configFile.getAbsolutePath()
+        );
+        ProcessResult export = runCli(
+            "export",
+            "delete from users where_exists in (select id from audit where active = 0)",
+            File.createTempFile("oracle-script-cli", ".csv").getAbsolutePath(),
+            "--unsafe",
+            "--confirm-risk",
+            "YES",
+            "--config",
+            configFile.getAbsolutePath()
+        );
+
+        assertEquals(runCurrent.output, 2, runCurrent.exitCode);
+        assertEquals(exec.output, 2, exec.exitCode);
+        assertEquals(export.output, 2, export.exitCode);
+        assertTrue(runCurrent.output.contains(SafetyGuard.MISSING_WHERE_MESSAGE));
+        assertTrue(exec.output.contains(SafetyGuard.MISSING_WHERE_MESSAGE));
+        assertTrue(export.output.contains(SafetyGuard.MISSING_WHERE_MESSAGE));
     }
 
     @Test
@@ -323,7 +375,7 @@ public class OracleScriptCliSmokeTest {
         ProcessResult blocked = runCli(
             "run-current",
             "--buffer",
-            "delete from customers",
+            "delete from customers where id = 1",
             "--dry-run",
             "--force",
             "--config",
@@ -332,7 +384,7 @@ public class OracleScriptCliSmokeTest {
         ProcessResult confirmed = runCli(
             "run-current",
             "--buffer",
-            "delete from customers",
+            "delete from customers where id = 1",
             "--dry-run",
             "--force",
             "--confirm-risk",
@@ -344,7 +396,7 @@ public class OracleScriptCliSmokeTest {
         assertEquals(blocked.output, 2, blocked.exitCode);
         assertTrue(blocked.output.contains("--confirm-risk YES"));
         assertEquals(confirmed.output, 0, confirmed.exitCode);
-        assertTrue(confirmed.output.contains("delete from customers"));
+        assertTrue(confirmed.output.contains("delete from customers where id = 1"));
         assertFalse(confirmed.output.contains("pg-secret"));
     }
 
@@ -378,7 +430,7 @@ public class OracleScriptCliSmokeTest {
         ProcessResult qaUnsafe = runCli(
             "run-current",
             "--buffer",
-            "delete from users",
+            "delete from users where id = 1",
             "--dry-run",
             "--unsafe",
             "--config",
@@ -387,7 +439,7 @@ public class OracleScriptCliSmokeTest {
         ProcessResult prodBlocked = runCli(
             "run-current",
             "--buffer",
-            "delete from users",
+            "delete from users where id = 1",
             "--dry-run",
             "--unsafe",
             "--config",
@@ -396,7 +448,7 @@ public class OracleScriptCliSmokeTest {
         ProcessResult prodConfirmed = runCli(
             "run-current",
             "--buffer",
-            "delete from users",
+            "delete from users where id = 1",
             "--dry-run",
             "--unsafe",
             "--confirm-risk",

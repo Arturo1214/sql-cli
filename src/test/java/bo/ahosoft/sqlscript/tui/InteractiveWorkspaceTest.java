@@ -266,15 +266,30 @@ public class InteractiveWorkspaceTest {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
 
         new InteractiveWorkspace(
-            input("use local\nbuffer set delete from users\nrun\nrun --force --confirm-risk YES\nexit\n"),
+            input("use local\nbuffer set delete from users where id = 1\nrun\nrun --force --confirm-risk YES\nexit\n"),
             output,
             session
         ).run();
 
         String rendered = text(output);
-        assertEquals("delete from users", executor.statement);
+        assertEquals("delete from users where id = 1", executor.statement);
         assertTrue(rendered.contains("Safety mode blocked a dangerous SQL statement"));
-        assertTrue(rendered.contains("RESULT: delete from users"));
+        assertTrue(rendered.contains("RESULT: delete from users where id = 1"));
+    }
+
+    @Test
+    public void rawTuiBlocksMutationWithoutTopLevelWhereBeforeConfirmation() throws Exception {
+        ConnectionRegistry registry = registry();
+        registry.save("local", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "secret"));
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = session(registry, executor);
+        session.useConnection("local");
+
+        String blocked = session.runCurrentBufferWithUnsafeConfirmation("update users set active = 0", 0, "YES");
+
+        assertEquals(null, executor.statement);
+        assertTrue(blocked.contains(SafetyGuard.MISSING_WHERE_MESSAGE));
+        assertEquals(SafetyGuard.MISSING_WHERE_MESSAGE + " (statement 1)", session.dashboardState().statusMessage());
     }
 
     @Test
@@ -288,10 +303,8 @@ public class InteractiveWorkspaceTest {
         String blocked = session.runCurrentBuffer("delete from users", 0);
         String metadata = session.runCurrentBuffer("tables", 0);
 
-        assertTrue(blocked.contains("Safety mode blocked a dangerous SQL statement"));
-        assertTrue(
-            new TuiMessages(TuiLanguage.SPANISH).localizeResultText(blocked).contains("Modo seguro bloqueo una sentencia SQL peligrosa")
-        );
+        assertTrue(blocked.contains(SafetyGuard.MISSING_WHERE_MESSAGE));
+        assertTrue(new TuiMessages(TuiLanguage.SPANISH).localizeResultText(blocked).contains("WHERE de nivel superior"));
         assertTrue(metadata.contains("RESULT:"));
         assertTrue(executor.statement.toLowerCase().contains("select"));
     }
@@ -435,7 +448,7 @@ public class InteractiveWorkspaceTest {
 
         String runBlocked = session.runCurrentBuffer();
 
-        assertTrue(runBlocked.contains("Safety mode blocked a dangerous SQL statement"));
+        assertTrue(runBlocked.contains(SafetyGuard.MISSING_WHERE_MESSAGE));
         assertEquals(null, executor.statement);
     }
 

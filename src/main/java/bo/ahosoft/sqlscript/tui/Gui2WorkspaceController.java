@@ -1117,6 +1117,15 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         ConnectionConfig activeConnection = session.activeConnection();
         WorkspaceCommand editorCommand = WorkspaceCommand.parse(statement);
         if (activeConnection != null && !isEditorMetadata(editorCommand.type()) && SafetyGuard.isDestructive(statement)) {
+            try {
+                MutationWhereValidator.requireTopLevelWhereForMutations(statement);
+            } catch (IllegalArgumentException ex) {
+                session.runCurrentBuffer(editorText, cursorOffset);
+                resultScrollOffset = 0;
+                resultHorizontalOffset = 0;
+                refresh();
+                return;
+            }
             showDangerousSqlConfirmation(editorText, cursorOffset, statement, activeConnection);
             return;
         }

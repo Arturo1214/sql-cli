@@ -79,6 +79,12 @@ public final class TuiMessages {
         if ("Nothing is ready to execute".equals(value)) return "No hay nada listo para ejecutar";
         if ("No active connection selected".equals(value)) return "No hay una conexion activa seleccionada";
         if ("No saved connections".equals(value)) return "No hay conexiones guardadas";
+        if (value.startsWith("Safety mode blocked UPDATE/DELETE without a top-level WHERE clause")) {
+            return value.replace(
+                "Safety mode blocked UPDATE/DELETE without a top-level WHERE clause",
+                "Modo seguro bloqueo UPDATE/DELETE sin WHERE de nivel superior"
+            );
+        }
         if (value.startsWith("Safety mode blocked a dangerous SQL statement")) {
             return value.replace("Safety mode blocked a dangerous SQL statement", "Modo seguro bloqueo una sentencia SQL peligrosa");
         }
@@ -209,6 +215,7 @@ public final class TuiMessages {
                 "Comandos de metadatos: tables, describe <table>, indexes <table>\n" +
                 "Biblioteca: lib save <name>, lib save <name> --template, lib list, lib search <text>, lib load <id> --replace, lib preview <id> --param name=value, lib fill <id> --replace --param name=value, lib delete <id> --yes\n" +
                 "Plantillas: usa {{name}}; los duplicados se piden una vez y se reutilizan. Advertencia de sustitucion textual: cita y escapa valores antes de ejecutar.\n" +
+                "Seguridad: UPDATE/DELETE requieren WHERE de nivel superior; DROP/TRUNCATE/ALTER conservan la confirmacion peligrosa.\n" +
                 "El SQL guardado puede contener datos sensibles. Cargar una consulta no la ejecuta.\n" +
                 "Idioma: usa la accion Idioma/Espanol en el panel izquierdo\n" +
                 "Cerrar ayuda: Esc o Enter en Cerrar"
@@ -235,6 +242,7 @@ public final class TuiMessages {
             "Metadata commands: tables, describe <table>, indexes <table>\n" +
             "Query library: lib save <name>, lib save <name> --template, lib list, lib search <text>, lib load <id> --replace, lib preview <id> --param name=value, lib fill <id> --replace --param name=value, lib delete <id> --yes\n" +
             "Templates: use {{name}}; duplicates are prompted once and reused. Raw substitution warning: quote and escape values before running.\n" +
+            "Safety: UPDATE/DELETE require a top-level WHERE; DROP/TRUNCATE/ALTER keep dangerous confirmation.\n" +
             "Saved SQL may contain sensitive data. Loading a query does not execute it.\n" +
             "Language: use the Language action in the left pane\n" +
             "Close help: Esc or Enter on Close"

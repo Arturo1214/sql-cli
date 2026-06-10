@@ -211,7 +211,7 @@ public class Gui2WorkspaceControllerTest {
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
         components.window().setTextGUI(textGUI);
-        components.sqlEditor().setText("update users set enabled = 0");
+        components.sqlEditor().setText("update users set enabled = 0 where id = 10");
         controller.handleKeyStroke(new KeyStroke(KeyType.F5));
 
         assertEquals(null, executor.statement);
@@ -221,6 +221,24 @@ public class Gui2WorkspaceControllerTest {
         assertTrue(hasLabelContaining(textGUI.lastAddedWindow.getComponent(), "Type RUN"));
         assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Run anyway"));
         assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Cancel"));
+    }
+
+    @Test
+    public void gui2BlocksMutationWithoutTopLevelWhereBeforeOpeningConfirmation() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("update users set enabled = 0");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+
+        assertEquals(null, executor.statement);
+        assertEquals(0, executor.executionCount);
+        assertEquals(null, textGUI.lastAddedWindow);
+        assertTrue(components.resultsText().getText().contains(SafetyGuard.MISSING_WHERE_MESSAGE));
+        assertTrue(components.statusText().getText().contains(SafetyGuard.MISSING_WHERE_MESSAGE));
     }
 
     @Test
