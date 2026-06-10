@@ -1,6 +1,7 @@
 package bo.ahosoft.sqlscript.domain;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.time.Instant;
@@ -70,5 +71,37 @@ public class QueryLibraryEntryTest {
         assertEquals("", entry.environmentScope());
         assertEquals("", entry.connectionScope());
         assertTrue(entry.tags().isEmpty());
+        assertFalse(entry.template());
+        assertTrue(entry.templateParameters().isEmpty());
+        assertEquals(null, entry.templateUpdatedAt());
+    }
+
+    @Test
+    public void storesImmutableTemplateMetadataWithoutValues() {
+        Instant created = Instant.parse("2026-06-09T13:00:00Z");
+        Instant updated = Instant.parse("2026-06-09T13:10:00Z");
+        Instant templateUpdated = Instant.parse("2026-06-09T13:05:00Z");
+        ArrayList<String> parameters = new ArrayList<>(Arrays.asList("customer_id", "status"));
+
+        QueryLibraryEntry entry = new QueryLibraryEntry(
+            "customer-template",
+            "Customer Template",
+            "select * from customers where id = {{customer_id}} and status = {{status}}",
+            "Customer lookup",
+            Arrays.asList("support"),
+            false,
+            "DEV",
+            "dev-support",
+            created,
+            updated,
+            true,
+            parameters,
+            templateUpdated
+        );
+        parameters.add("mutated");
+
+        assertTrue(entry.template());
+        assertEquals(Arrays.asList("customer_id", "status"), entry.templateParameters());
+        assertEquals(templateUpdated, entry.templateUpdatedAt());
     }
 }

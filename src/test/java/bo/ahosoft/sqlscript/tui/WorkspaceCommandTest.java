@@ -63,6 +63,10 @@ public class WorkspaceCommandTest {
         WorkspaceCommand list = WorkspaceCommand.parse("library list");
         WorkspaceCommand search = WorkspaceCommand.parse("lib search finance reports");
         WorkspaceCommand load = WorkspaceCommand.parse("library load monthly-sales --replace");
+        WorkspaceCommand preview = WorkspaceCommand.parse("lib preview customer-template --param customer_id=42");
+        WorkspaceCommand fill = WorkspaceCommand.parse(
+            "library fill customer-template --replace --param customer_id=42 --param status='ACTIVE'"
+        );
         WorkspaceCommand delete = WorkspaceCommand.parse("lib delete monthly-sales --yes");
         WorkspaceCommand favorite = WorkspaceCommand.parse("lib favorite monthly-sales");
         WorkspaceCommand unfavorite = WorkspaceCommand.parse("library unfavorite monthly-sales");
@@ -75,6 +79,13 @@ public class WorkspaceCommandTest {
         assertEquals("finance reports", search.argumentText());
         assertEquals(WorkspaceCommand.Type.LIB_LOAD, load.type());
         assertEquals(Arrays.asList("monthly-sales", "--replace"), load.arguments());
+        assertEquals(WorkspaceCommand.Type.LIB_PREVIEW, preview.type());
+        assertEquals(Arrays.asList("customer-template", "--param", "customer_id=42"), preview.arguments());
+        assertEquals(WorkspaceCommand.Type.LIB_FILL, fill.type());
+        assertEquals(
+            Arrays.asList("customer-template", "--replace", "--param", "customer_id=42", "--param", "status='ACTIVE'"),
+            fill.arguments()
+        );
         assertEquals(WorkspaceCommand.Type.LIB_DELETE, delete.type());
         assertEquals(WorkspaceCommand.Type.LIB_FAVORITE, favorite.type());
         assertEquals(WorkspaceCommand.Type.LIB_UNFAVORITE, unfavorite.type());

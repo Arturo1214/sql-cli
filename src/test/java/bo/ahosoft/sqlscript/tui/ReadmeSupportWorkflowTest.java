@@ -39,4 +39,31 @@ public class ReadmeSupportWorkflowTest {
         assertTrue(readme.contains("Loading a query never executes it"));
         assertTrue(readme.contains("SafetyGuard"));
     }
+
+    @Test
+    public void readmeDocumentsParameterizedQueryTemplateSyntaxCommandsAndRawSubstitutionWarning() throws Exception {
+        String readme = new String(Files.readAllBytes(new File("README.md").toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(readme.contains("Parameterized query templates"));
+        assertTrue(readme.contains("{{name}}"));
+        assertTrue(readme.contains("lib save <name> --template"));
+        assertTrue(readme.contains("lib preview <id> --param name=value"));
+        assertTrue(readme.contains("lib fill <id> --replace --param name=value"));
+        assertTrue(readme.contains("prompted once and reused"));
+        assertTrue(readme.contains("Raw substitution warning"));
+        assertTrue(readme.contains("Rendered templates load into the editor only"));
+        assertTrue(readme.contains("never auto-execute"));
+    }
+
+    @Test
+    public void readmeDocumentsTuiDangerousSqlConfirmationAndCliUnsafeScope() throws Exception {
+        String readme = new String(Files.readAllBytes(new File("README.md").toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(readme.contains("Dangerous SQL confirmation"));
+        assertTrue(readme.contains("Run the packaged CLI with no arguments to open the TUI"));
+        assertTrue(readme.contains("workspace"));
+        assertTrue(readme.contains("--unsafe"));
+        assertTrue(readme.contains("CLI mode only"));
+        assertTrue(readme.contains("type the active connection name exactly"));
+    }
 }

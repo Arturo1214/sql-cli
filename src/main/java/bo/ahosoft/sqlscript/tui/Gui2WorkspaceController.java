@@ -5,6 +5,7 @@ import bo.ahosoft.sqlscript.config.*;
 import bo.ahosoft.sqlscript.db.*;
 import bo.ahosoft.sqlscript.domain.*;
 import bo.ahosoft.sqlscript.sql.*;
+import bo.ahosoft.sqlscript.template.*;
 import bo.ahosoft.sqlscript.tui.*;
 import com.googlecode.lanterna.TerminalSize;
 import com.googlecode.lanterna.gui2.BasicWindow;
@@ -25,7 +26,9 @@ import com.googlecode.lanterna.input.KeyType;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.WorkspaceUiActions {
 
@@ -262,6 +265,26 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         );
         buttons.addComponent(
             new Button(
+                messages().saveTemplate(),
+                new Runnable() {
+                    public void run() {
+                        if (
+                            saveCurrentQueryTemplateToLibrary(
+                                name.getText(),
+                                description.getText(),
+                                tags.getText(),
+                                isTruthy(favorite.getText()),
+                                false
+                            )
+                        ) {
+                            closeDialog(dialog[0]);
+                        }
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
                 messages().cancel(),
                 new Runnable() {
                     public void run() {
@@ -310,6 +333,16 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
                 new Runnable() {
                     public void run() {
                         loadQueryFromLibrary(id.getText(), false);
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().fillTemplate(),
+                new Runnable() {
+                    public void run() {
+                        openTemplateFillDialog(id.getText());
                     }
                 }
             )
@@ -383,6 +416,30 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         }
     }
 
+    public boolean saveCurrentQueryTemplateToLibrary(String name, String description, String tags, boolean favorite, boolean overwrite) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        try {
+            String sql = current.sqlEditor().getText();
+            QueryTemplate template = QueryTemplateParser.parse(sql);
+            QueryLibraryEntry entry = session.saveTemplateQueryLibraryEntry(
+                name,
+                sql,
+                description,
+                splitCsv(tags),
+                favorite,
+                parameterNames(template),
+                overwrite
+            );
+            current.resultsText().setText("Saved template: " + entry.id() + System.lineSeparator() + messages().rawSubstitutionWarning());
+            session.replaceBuffer(sql);
+            editorCleanSnapshot = sql;
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
     public boolean searchQueryLibrary(String text) {
         Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
         try {
@@ -407,6 +464,115 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
             session.replaceBuffer(entry.sql());
             editorCleanSnapshot = entry.sql();
             current.resultsText().setText("Loaded query into editor: " + entry.id());
+            refreshEditorDiagnostics(current);
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
+    public boolean openTemplateFillDialog(String id) {
+        final Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        final QueryLibraryEntry entry;
+        try {
+            entry = session.loadQueryLibraryEntry(id);
+            if (!entry.template()) {
+                current.resultsText().setText("Query is not a template: " + entry.id());
+                return false;
+            }
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+        final List<String> parameterNames = entry.templateParameters().isEmpty()
+            ? parameterNames(QueryTemplateParser.parse(entry.sql()))
+            : entry.templateParameters();
+        final List<TextBox> fields = new ArrayList<TextBox>();
+        final BasicWindow[] dialog = new BasicWindow[1];
+        Panel root = new Panel(new LinearLayout(Direction.VERTICAL));
+        root.addComponent(new Label(messages().rawSubstitutionWarning()));
+        Panel inputs = new Panel(new GridLayout(2));
+        for (String parameterName : parameterNames) {
+            TextBox field = new TextBox(new TerminalSize(42, 1));
+            inputs.addComponent(new Label(parameterName));
+            inputs.addComponent(field);
+            fields.add(field);
+        }
+        root.addComponent(inputs);
+        Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        buttons.addComponent(
+            new Button(
+                messages().preview(),
+                new Runnable() {
+                    public void run() {
+                        previewTemplateFromLibrary(entry.id(), collectTemplateValues(parameterNames, fields));
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().load(),
+                new Runnable() {
+                    public void run() {
+                        if (fillTemplateFromLibrary(entry.id(), collectTemplateValues(parameterNames, fields), false)) {
+                            closeDialog(dialog[0]);
+                        }
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().cancel(),
+                new Runnable() {
+                    public void run() {
+                        closeDialog(dialog[0]);
+                    }
+                }
+            )
+        );
+        root.addComponent(buttons);
+        BasicWindow window = new BasicWindow(messages().templateFillTitle());
+        dialog[0] = window;
+        window.setHints(Arrays.asList(Window.Hint.CENTERED, Window.Hint.MODAL));
+        window.setComponent(root);
+        addOrRenderWindow(window, messages().templateFillTitle());
+        return true;
+    }
+
+    public boolean previewTemplateFromLibrary(String id, List<String> values) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        try {
+            QueryLibraryEntry entry = session.loadQueryLibraryEntry(id);
+            RenderedQueryTemplate rendered = renderTemplate(entry, values);
+            current.resultsText().setText(messages().rawSubstitutionWarning() + System.lineSeparator() + rendered.sql());
+            return true;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
+    public boolean fillTemplateFromLibrary(String id, List<String> values, boolean replaceDirty) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        try {
+            QueryLibraryEntry entry = session.loadQueryLibraryEntry(id);
+            RenderedQueryTemplate rendered = renderTemplate(entry, values);
+            if (isDirty(current) && !replaceDirty) {
+                current.resultsText().setText(messages().replaceDirtyEditorConfirmation());
+                return false;
+            }
+            current.sqlEditor().setText(rendered.sql());
+            current.sqlEditor().setCaretPosition(0, 0);
+            session.replaceBuffer(rendered.sql());
+            editorCleanSnapshot = rendered.sql();
+            current
+                .resultsText()
+                .setText(
+                    "Rendered template loaded into editor: " + entry.id() + System.lineSeparator() + messages().rawSubstitutionWarning()
+                );
             refreshEditorDiagnostics(current);
             return true;
         } catch (Exception ex) {
@@ -842,6 +1008,39 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         return values;
     }
 
+    private static List<String> parameterNames(QueryTemplate template) {
+        List<String> names = new ArrayList<String>();
+        for (TemplateParameter parameter : template.parameters()) {
+            names.add(parameter.name());
+        }
+        return names;
+    }
+
+    private static List<String> collectTemplateValues(List<String> parameterNames, List<TextBox> fields) {
+        List<String> values = new ArrayList<String>();
+        for (int i = 0; i < parameterNames.size(); i++) {
+            values.add(i < fields.size() ? fields.get(i).getText() : "");
+        }
+        return values;
+    }
+
+    private static RenderedQueryTemplate renderTemplate(QueryLibraryEntry entry, List<String> values) {
+        if (!entry.template()) {
+            throw new IllegalArgumentException("Query is not a template: " + entry.id());
+        }
+        List<String> names = entry.templateParameters().isEmpty()
+            ? parameterNames(QueryTemplateParser.parse(entry.sql()))
+            : entry.templateParameters();
+        if (values == null || values.size() < names.size()) {
+            throw new IllegalArgumentException("Missing value for template parameter: " + names.get(values == null ? 0 : values.size()));
+        }
+        Map<String, String> mapped = new LinkedHashMap<String, String>();
+        for (int i = 0; i < names.size(); i++) {
+            mapped.put(names.get(i), values.get(i));
+        }
+        return QueryTemplateRenderer.render(QueryTemplateParser.parse(entry.sql()), mapped);
+    }
+
     private static boolean isTruthy(String value) {
         if (value == null) {
             return false;
@@ -905,10 +1104,95 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
 
     public void runCurrentSql() {
         Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
-        session.runCurrentBuffer(current.sqlEditor().getText(), caretOffset(current));
+        String editorText = current.sqlEditor().getText();
+        int cursorOffset = caretOffset(current);
+        if (editorText == null || editorText.trim().isEmpty()) {
+            session.runCurrentBuffer(editorText, cursorOffset);
+            resultScrollOffset = 0;
+            resultHorizontalOffset = 0;
+            refresh();
+            return;
+        }
+        String statement = SqlStatementSelector.currentStatement(editorText == null ? "" : editorText, cursorOffset);
+        ConnectionConfig activeConnection = session.activeConnection();
+        WorkspaceCommand editorCommand = WorkspaceCommand.parse(statement);
+        if (activeConnection != null && !isEditorMetadata(editorCommand.type()) && SafetyGuard.isDestructive(statement)) {
+            showDangerousSqlConfirmation(editorText, cursorOffset, statement, activeConnection);
+            return;
+        }
+        session.runCurrentBuffer(editorText, cursorOffset);
         resultScrollOffset = 0;
         resultHorizontalOffset = 0;
         refresh();
+    }
+
+    private void showDangerousSqlConfirmation(
+        final String editorText,
+        final int cursorOffset,
+        String statement,
+        ConnectionConfig activeConnection
+    ) {
+        final boolean production = activeConnection.environment().isProduction();
+        final String requiredConfirmation = SafetyGuard.requiredConfirmation(
+            activeConnection.environment(),
+            session.activeConnectionName()
+        );
+        final TextBox confirmation = new TextBox(new TerminalSize(42, 1));
+        final BasicWindow[] dialog = new BasicWindow[1];
+        final boolean[] consumed = new boolean[] { false };
+        Panel root = new Panel(new LinearLayout(Direction.VERTICAL));
+        root.addComponent(
+            new Label(
+                messages().dangerousSqlConfirmationMessage(SafetyGuard.destructiveOperation(statement), requiredConfirmation, production)
+            )
+        );
+        root.addComponent(confirmation);
+        Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        buttons.addComponent(
+            new Button(
+                messages().runAnyway(),
+                new Runnable() {
+                    public void run() {
+                        if (consumed[0]) {
+                            return;
+                        }
+                        if (!requiredConfirmation.equals(confirmation.getText())) {
+                            session.markDangerousSqlConfirmationMismatch();
+                            refresh();
+                            return;
+                        }
+                        consumed[0] = true;
+                        session.runCurrentBufferWithUnsafeConfirmation(editorText, cursorOffset, requiredConfirmation);
+                        resultScrollOffset = 0;
+                        resultHorizontalOffset = 0;
+                        closeDialog(dialog[0]);
+                        refresh();
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().cancel(),
+                new Runnable() {
+                    public void run() {
+                        if (consumed[0]) {
+                            return;
+                        }
+                        consumed[0] = true;
+                        session.markDangerousSqlCanceled();
+                        closeDialog(dialog[0]);
+                        refresh();
+                    }
+                }
+            )
+        );
+        root.addComponent(buttons);
+        dialog[0] = confirmationWindow(messages().dangerousSqlConfirmationTitle(production), root);
+        addOrRenderWindow(
+            dialog[0],
+            messages().dangerousSqlConfirmationMessage(SafetyGuard.destructiveOperation(statement), requiredConfirmation, production)
+        );
     }
 
     public void showHelp() {
@@ -1021,6 +1305,10 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
             }
         }
         return SqlDialect.GENERIC;
+    }
+
+    private static boolean isEditorMetadata(WorkspaceCommand.Type type) {
+        return type == WorkspaceCommand.Type.TABLES || type == WorkspaceCommand.Type.DESC || type == WorkspaceCommand.Type.INDEXES;
     }
 
     private static int resultsViewportRows(Gui2WorkspaceLayout.WorkspaceComponents current) {

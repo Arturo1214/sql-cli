@@ -26,6 +26,8 @@ public final class QueryLibraryStore {
 
     public static final String PRIVACY_WARNING =
         "Saved SQL may contain sensitive data. Review query text before storing shared or regulated information.";
+    public static final String RAW_SUBSTITUTION_WARNING =
+        "Raw substitution warning: template values are inserted as text. Quote and escape values in the template or input before running.";
     public static final Set<PosixFilePermission> USER_ONLY_DIRECTORY_PERMISSIONS = Collections.unmodifiableSet(
         new HashSet<PosixFilePermission>(
             Arrays.asList(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE, PosixFilePermission.OWNER_EXECUTE)
@@ -65,6 +67,46 @@ public final class QueryLibraryStore {
         String connectionScope,
         boolean overwrite
     ) throws IOException {
+        return saveEntry(
+            name,
+            sql,
+            description,
+            tags,
+            favorite,
+            environmentScope,
+            connectionScope,
+            false,
+            Collections.<String>emptyList(),
+            overwrite
+        );
+    }
+
+    public QueryLibraryEntry saveTemplate(
+        String name,
+        String sql,
+        String description,
+        List<String> tags,
+        boolean favorite,
+        String environmentScope,
+        String connectionScope,
+        List<String> templateParameters,
+        boolean overwrite
+    ) throws IOException {
+        return saveEntry(name, sql, description, tags, favorite, environmentScope, connectionScope, true, templateParameters, overwrite);
+    }
+
+    private QueryLibraryEntry saveEntry(
+        String name,
+        String sql,
+        String description,
+        List<String> tags,
+        boolean favorite,
+        String environmentScope,
+        String connectionScope,
+        boolean template,
+        List<String> templateParameters,
+        boolean overwrite
+    ) throws IOException {
         String normalizedName = requireText(name, "name");
         String id = slug(normalizedName);
         Properties properties = readProperties();
@@ -88,7 +130,10 @@ public final class QueryLibraryStore {
             environmentScope,
             connectionScope,
             createdAt,
-            now
+            now,
+            template,
+            normalizeTags(templateParameters),
+            template ? now : null
         );
         writeEntry(properties, entry);
         writeIds(properties, ids);
@@ -232,6 +277,13 @@ public final class QueryLibraryStore {
             }
             Instant createdAt = parseInstant(properties.getProperty(prefix + "createdAt"));
             Instant updatedAt = parseInstant(properties.getProperty(prefix + "updatedAt"));
+            int parameterCount = parseInt(properties.getProperty(prefix + "templateParameters.count"));
+            List<String> templateParameters = new ArrayList<>();
+            for (int i = 0; i < parameterCount; i++) {
+                templateParameters.add(decodeText(properties.getProperty(prefix + "templateParameters." + i, "")));
+            }
+            boolean template = Boolean.parseBoolean(properties.getProperty(prefix + "template", "false"));
+            Instant templateUpdatedAt = template ? parseInstant(properties.getProperty(prefix + "templateUpdatedAt")) : null;
             return new QueryLibraryEntry(
                 id,
                 decodeText(properties.getProperty(prefix + "name")),
@@ -242,7 +294,10 @@ public final class QueryLibraryStore {
                 decodeText(properties.getProperty(prefix + "environmentScope", "")),
                 decodeText(properties.getProperty(prefix + "connectionScope", "")),
                 createdAt,
-                updatedAt
+                updatedAt,
+                template,
+                templateParameters,
+                templateUpdatedAt
             );
         } catch (RuntimeException ex) {
             return null;
@@ -263,6 +318,16 @@ public final class QueryLibraryStore {
         properties.setProperty(prefix + "connectionScope", encodeText(entry.connectionScope()));
         properties.setProperty(prefix + "createdAt", entry.createdAt().toString());
         properties.setProperty(prefix + "updatedAt", entry.updatedAt().toString());
+        properties.setProperty(prefix + "template", String.valueOf(entry.template()));
+        properties.setProperty(prefix + "templateParameters.count", String.valueOf(entry.templateParameters().size()));
+        for (int i = 0; i < entry.templateParameters().size(); i++) {
+            properties.setProperty(prefix + "templateParameters." + i, encodeText(entry.templateParameters().get(i)));
+        }
+        if (entry.templateUpdatedAt() != null) {
+            properties.setProperty(prefix + "templateUpdatedAt", entry.templateUpdatedAt().toString());
+        } else {
+            properties.remove(prefix + "templateUpdatedAt");
+        }
     }
 
     private static void removeEntry(Properties properties, String id) {

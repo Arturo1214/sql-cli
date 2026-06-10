@@ -100,9 +100,12 @@ Terminal fallback commands use English keywords in every UI language:
 
 ```text
 lib save <name> [--desc <text>] [--tags support,qa] [--favorite] [--overwrite]
+lib save <name> --template [--desc <text>] [--tags support,qa] [--favorite] [--overwrite]
 lib list
 lib search <text>
 lib load <id> --replace
+lib preview <id> --param name=value
+lib fill <id> --replace --param name=value
 lib delete <id> --yes
 lib favorite <id>
 lib unfavorite <id>
@@ -111,6 +114,40 @@ lib unfavorite <id>
 Saved SQL may contain sensitive data. Review query text before storing shared or regulated information. The library file is local text storage and applies user-only permissions where the operating system supports them.
 
 Loading a query never executes it. It only replaces the editor/buffer after dirty-buffer confirmation; any later execution still goes through SafetyGuard and the active environment confirmation rules.
+
+### Dangerous SQL confirmation
+
+The TUI keeps SafetyGuard enabled by default. When you explicitly run dangerous SQL from the editor with `F5` or `Ctrl+R` (`UPDATE`, `DELETE`, `DROP`, `TRUNCATE`, `ALTER`, and other SafetyGuard-blocked statements), the workspace opens a keyboard-only confirmation modal instead of executing immediately.
+
+- Non-PROD connections require typing `RUN`, then activating `Run anyway`. The confirmation applies to the current statement once only.
+- PROD connections require you to type the active connection name exactly, then activate `Run anyway`. A mismatch or cancel does not execute anything.
+- Loading files, saved queries, favorites, or rendered templates never auto-executes SQL. Loaded text must still be run manually and still goes through this confirmation flow.
+- `--unsafe` and `--confirm-risk` are CLI mode only. Use no arguments or `workspace` to open the TUI; `java -jar target/oracle-script-cli.jar --unsafe` remains a CLI invocation and does not silently launch the workspace.
+
+#### Parameterized query templates
+
+Parameterized query templates are saved query-library entries whose SQL contains `{{name}}` placeholders. Names must start with a letter or underscore and may contain letters, numbers, or underscores. Duplicate placeholders are prompted once and reused for every occurrence.
+
+Example template:
+
+```sql
+select *
+from customers
+where customer_id = {{customer_id}}
+  and status = {{status}}
+```
+
+Terminal fallback commands:
+
+```text
+lib save Customer Template --template --tags support
+lib preview <id> --param customer_id=42 --param status='ACTIVE'
+lib fill <id> --replace --param customer_id=42 --param status='ACTIVE'
+```
+
+In the full TUI, use `F9` and `Save Template` to store the current editor SQL as a template. Use `F10`, choose a template id, and `Fill Template` to open a keyboard-only modal with one field per unique placeholder. `Preview` renders the SQL in Results/Logs; `Load` replaces the editor after the same dirty-buffer confirmation used by normal query loading.
+
+Raw substitution warning: template values are inserted as text. Quote and escape values in the template or input before running. Rendered templates load into the editor only and never auto-execute; manual execution still goes through SafetyGuard.
 
 ## Connection Management
 

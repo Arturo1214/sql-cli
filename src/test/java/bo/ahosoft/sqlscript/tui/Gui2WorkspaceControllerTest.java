@@ -165,7 +165,8 @@ public class Gui2WorkspaceControllerTest {
     @Test
     public void editorFocusAcceptsPastedMultilineCharacterEventsAndQuestionMarks() throws Exception {
         CapturingExecutor executor = new CapturingExecutor();
-        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        InteractiveWorkspace.Session session = session(executor);
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
         controller.handleKeyStroke(new KeyStroke(KeyType.F3));
@@ -200,6 +201,128 @@ public class Gui2WorkspaceControllerTest {
         controller.handleKeyStroke(new KeyStroke(KeyType.F5));
 
         assertEquals("select *\nfrom orders", executor.statement);
+    }
+
+    @Test
+    public void dangerousNonProdStatementOpensConfirmationAndDoesNotExecuteBeforeConfirmation() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("update users set enabled = 0");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+
+        assertEquals(null, executor.statement);
+        assertNotNull(textGUI.lastAddedWindow);
+        assertEquals("Dangerous SQL confirmation", textGUI.lastAddedWindow.getTitle());
+        assertTrue(hasLabelContaining(textGUI.lastAddedWindow.getComponent(), "UPDATE"));
+        assertTrue(hasLabelContaining(textGUI.lastAddedWindow.getComponent(), "Type RUN"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Run anyway"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Cancel"));
+    }
+
+    @Test
+    public void dangerousNonProdConfirmExecutesOnce() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("delete from audit_log where created_at < sysdate - 30");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText("RUN");
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Run anyway");
+
+        assertEquals("delete from audit_log where created_at < sysdate - 30", executor.statement);
+        assertEquals(1, executor.executionCount);
+        assertEquals("RESULT: delete from audit_log where created_at < sysdate - 30", components.resultsText().getText());
+        assertEquals("Status: Query completed | Active: local [DEV]", components.statusText().getText());
+
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Run anyway");
+        assertEquals(1, executor.executionCount);
+    }
+
+    @Test
+    public void dangerousNonProdCancelDoesNotExecute() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("drop table old_users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Cancel");
+
+        assertEquals(null, executor.statement);
+        assertEquals(0, executor.executionCount);
+        assertTrue(components.resultsText().getText().contains("Dangerous SQL execution canceled"));
+        assertEquals("Status: Dangerous SQL execution canceled | Active: local [DEV]", components.statusText().getText());
+    }
+
+    @Test
+    public void dangerousProdStatementRequiresExactActiveConnectionName() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(productionSession(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("truncate table prod_orders");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+
+        assertEquals(null, executor.statement);
+        assertEquals("Dangerous PROD SQL confirmation", textGUI.lastAddedWindow.getTitle());
+        assertTrue(hasLabelContaining(textGUI.lastAddedWindow.getComponent(), "PROD"));
+        assertTrue(hasLabelContaining(textGUI.lastAddedWindow.getComponent(), "Type prod-main"));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText("prod-main");
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Run anyway");
+
+        assertEquals("truncate table prod_orders", executor.statement);
+        assertEquals(1, executor.executionCount);
+        assertEquals("Status: Query completed | Active: prod-main [PROD]", components.statusText().getText());
+    }
+
+    @Test
+    public void dangerousProdMismatchAndCancelDoNotExecute() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(productionSession(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("alter table customers add archived number(1)");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+        findComponent(textGUI.lastAddedWindow.getComponent(), TextBox.class).setText("RUN");
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Run anyway");
+
+        assertEquals(null, executor.statement);
+        assertEquals(0, executor.executionCount);
+        assertTrue(components.resultsText().getText().contains("Confirmation did not match"));
+
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Cancel");
+        assertEquals(null, executor.statement);
+        assertEquals(0, executor.executionCount);
+        assertTrue(components.resultsText().getText().contains("Dangerous SQL execution canceled"));
+    }
+
+    @Test
+    public void selectExecutesWithoutConfirmation() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select * from users");
+        controller.handleKeyStroke(new KeyStroke(KeyType.F5));
+
+        assertEquals("select * from users", executor.statement);
+        assertEquals(1, executor.executionCount);
+        assertEquals(null, textGUI.lastAddedWindow);
     }
 
     @Test
@@ -788,6 +911,31 @@ public class Gui2WorkspaceControllerTest {
     }
 
     @Test
+    public void f9SaveDialogCanPersistCurrentSqlAsTemplateWithoutExecutingIt() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = session(executor);
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.sqlEditor().setText("select * from customers where id = {{customer_id}} and status = {{status}}");
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F9)));
+
+        assertEquals("Save Query to Library", textGUI.lastAddedWindow.getTitle());
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Save Template"));
+        assertTrue(controller.saveCurrentQueryTemplateToLibrary("Customer Template", "support lookup", "support", false, false));
+        QueryLibraryEntry entry = session.loadQueryLibraryEntry("customer-template");
+
+        assertEquals(null, executor.statement);
+        assertTrue(entry.template());
+        assertEquals(Arrays.asList("customer_id", "status"), entry.templateParameters());
+        assertTrue(components.resultsText().getText().contains("Saved template: customer-template"));
+        assertTrue(components.resultsText().getText().contains("Raw substitution warning"));
+    }
+
+    @Test
     public void f10OpensKeyboardLibraryDialogAndSearchListsMetadataOnly() throws Exception {
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
         RecordingTextGUI textGUI = new RecordingTextGUI();
@@ -815,6 +963,74 @@ public class Gui2WorkspaceControllerTest {
         assertTrue(controller.searchQueryLibrary("urgent"));
         assertTrue(components.resultsText().getText().contains("incident-search | Incident Search | support, urgent | support queue"));
         assertFalse(components.resultsText().getText().contains("select * from incidents"));
+    }
+
+    @Test
+    public void f10TemplateFillDialogPromptsUniqueParametersLoadsPreviewOnlyAndDoesNotExecute() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = session(executor);
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components
+            .sqlEditor()
+            .setText("select * from orders where customer_id = {{customer_id}} or approver_id = {{customer_id}} and status = {{status}}");
+        assertTrue(controller.saveCurrentQueryTemplateToLibrary("Order Template", "lookup", "support", false, false));
+
+        assertTrue(controller.handleKeyStroke(new KeyStroke(KeyType.F10)));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Fill Template"));
+        assertTrue(controller.openTemplateFillDialog("order-template"));
+
+        assertEquals("Fill Template", textGUI.lastAddedWindow.getTitle());
+        assertTrue(hasLabelContaining(textGUI.lastAddedWindow.getComponent(), "Raw substitution warning"));
+        assertTrue(hasLabel(textGUI.lastAddedWindow.getComponent(), "customer_id"));
+        assertTrue(hasLabel(textGUI.lastAddedWindow.getComponent(), "status"));
+        assertEquals(2, countComponents(textGUI.lastAddedWindow.getComponent(), TextBox.class));
+
+        List<TextBox> fields = findComponents(textGUI.lastAddedWindow.getComponent(), TextBox.class);
+        fields.get(0).setText("42");
+        fields.get(1).setText("'ACTIVE'");
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Preview");
+
+        assertEquals(
+            "select * from orders where customer_id = {{customer_id}} or approver_id = {{customer_id}} and status = {{status}}",
+            components.sqlEditor().getText()
+        );
+        assertEquals(null, executor.statement);
+        assertTrue(components.resultsText().getText().contains("select * from orders where customer_id = 42"));
+        assertTrue(components.resultsText().getText().contains("approver_id = 42"));
+        assertTrue(components.resultsText().getText().contains("status = 'ACTIVE'"));
+
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Load");
+
+        assertEquals(
+            "select * from orders where customer_id = 42 or approver_id = 42 and status = 'ACTIVE'",
+            components.sqlEditor().getText()
+        );
+        assertEquals(null, executor.statement);
+        assertTrue(components.resultsText().getText().contains("Rendered template loaded into editor: order-template"));
+    }
+
+    @Test
+    public void templateFillRequiresDirtyEditorConfirmationBeforeReplacingBuffer() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = session(executor);
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.sqlEditor().setText("select * from users where id = {{user_id}}");
+        assertTrue(controller.saveCurrentQueryTemplateToLibrary("User Template", "lookup", "support", false, false));
+        components.sqlEditor().setText("select dirty");
+
+        assertFalse(controller.fillTemplateFromLibrary("user-template", Arrays.asList("7"), false));
+        assertEquals("select dirty", components.sqlEditor().getText());
+        assertTrue(components.resultsText().getText().contains("Replace current editor content"));
+
+        assertTrue(controller.fillTemplateFromLibrary("user-template", Arrays.asList("7"), true));
+        assertEquals("select * from users where id = 7", components.sqlEditor().getText());
+        assertEquals(null, executor.statement);
     }
 
     @Test
@@ -915,6 +1131,27 @@ public class Gui2WorkspaceControllerTest {
         return session;
     }
 
+    private InteractiveWorkspace.Session productionSession(CapturingExecutor executor) throws Exception {
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
+            null,
+            new EditorStateStore(temporaryFolder.newFile("prod-editor.properties"), 5),
+            executor,
+            new QueryLibraryStore(temporaryFolder.newFile("prod-query-library.properties"), java.time.Clock.systemUTC())
+        );
+        session.addConnection(
+            "prod-main",
+            new ConnectionConfig(
+                DatabaseType.ORACLE,
+                ConnectionEnvironment.PROD,
+                "jdbc:oracle:thin:@prod:1521/PROD",
+                "ora",
+                "secret",
+                Collections.<String>emptyList()
+            )
+        );
+        return session;
+    }
+
     private static SqlExecutionResult pagedResult() {
         List<List<String>> rows = new ArrayList<List<String>>();
         for (int i = 1; i <= 105; i++) {
@@ -936,6 +1173,7 @@ public class Gui2WorkspaceControllerTest {
     private static final class CapturingExecutor implements InteractiveWorkspace.WorkspaceSqlExecutor {
 
         private String statement;
+        private int executionCount;
         private final SqlExecutionResult result;
 
         CapturingExecutor() {
@@ -949,6 +1187,7 @@ public class Gui2WorkspaceControllerTest {
         @Override
         public SqlExecutionResult executeSingle(ConnectionConfig config, String statement) throws SQLException {
             this.statement = statement;
+            this.executionCount++;
             if (result != null) {
                 return result;
             }
@@ -1044,6 +1283,23 @@ public class Gui2WorkspaceControllerTest {
             }
         }
         return null;
+    }
+
+    private static <T extends Component> List<T> findComponents(Component component, Class<T> type) {
+        List<T> components = new ArrayList<T>();
+        collectComponents(component, type, components);
+        return components;
+    }
+
+    private static <T extends Component> void collectComponents(Component component, Class<T> type, List<T> components) {
+        if (type.isInstance(component)) {
+            components.add(type.cast(component));
+        }
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getChildren()) {
+                collectComponents(child, type, components);
+            }
+        }
     }
 
     private static final class RecordingTextGUI implements WindowBasedTextGUI {

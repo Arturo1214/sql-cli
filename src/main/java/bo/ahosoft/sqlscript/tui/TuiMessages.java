@@ -82,6 +82,8 @@ public final class TuiMessages {
         if (value.startsWith("Safety mode blocked a dangerous SQL statement")) {
             return value.replace("Safety mode blocked a dangerous SQL statement", "Modo seguro bloqueo una sentencia SQL peligrosa");
         }
+        if ("Dangerous SQL execution canceled".equals(value)) return dangerousSqlCanceled();
+        if (value.startsWith("Confirmation did not match")) return "La confirmacion no coincide. El SQL peligroso no se ejecuto.";
         if ("Metadata loaded".equals(value)) return "Metadatos cargados";
         if (value.startsWith("Active connection: ")) return "Conexion activa: " + value.substring("Active connection: ".length());
         if (value.startsWith("Connection saved: ")) return "Conexion guardada: " + value.substring("Connection saved: ".length());
@@ -138,8 +140,34 @@ public final class TuiMessages {
         return language == TuiLanguage.SPANISH ? "Guardar" : "Save";
     }
 
+    String saveTemplate() {
+        return language == TuiLanguage.SPANISH ? "Guardar plantilla" : "Save Template";
+    }
+
+    String fillTemplate() {
+        return language == TuiLanguage.SPANISH ? "Completar plantilla" : "Fill Template";
+    }
+
+    String preview() {
+        return language == TuiLanguage.SPANISH ? "Vista previa" : "Preview";
+    }
+
+    String templateFillTitle() {
+        return language == TuiLanguage.SPANISH ? "Completar plantilla" : "Fill Template";
+    }
+
+    String rawSubstitutionWarning() {
+        return language == TuiLanguage.SPANISH
+            ? "Advertencia de sustitucion textual: los valores se insertan como texto. Cita y escapa valores antes de ejecutar."
+            : QueryLibraryStore.RAW_SUBSTITUTION_WARNING;
+    }
+
     String cancel() {
         return language == TuiLanguage.SPANISH ? "Cancelar" : "Cancel";
+    }
+
+    String runAnyway() {
+        return language == TuiLanguage.SPANISH ? "Ejecutar igual" : "Run anyway";
     }
 
     String back() {
@@ -179,7 +207,8 @@ public final class TuiMessages {
                 "Conexiones: Nueva conexion Oracle, Nueva conexion PostgreSQL\n" +
                 "Enter: seleccionar conexion guardada o abrir accion seleccionada\n" +
                 "Comandos de metadatos: tables, describe <table>, indexes <table>\n" +
-                "Biblioteca: lib save <name>, lib list, lib search <text>, lib load <id> --replace, lib delete <id> --yes\n" +
+                "Biblioteca: lib save <name>, lib save <name> --template, lib list, lib search <text>, lib load <id> --replace, lib preview <id> --param name=value, lib fill <id> --replace --param name=value, lib delete <id> --yes\n" +
+                "Plantillas: usa {{name}}; los duplicados se piden una vez y se reutilizan. Advertencia de sustitucion textual: cita y escapa valores antes de ejecutar.\n" +
                 "El SQL guardado puede contener datos sensibles. Cargar una consulta no la ejecuta.\n" +
                 "Idioma: usa la accion Idioma/Espanol en el panel izquierdo\n" +
                 "Cerrar ayuda: Esc o Enter en Cerrar"
@@ -204,7 +233,8 @@ public final class TuiMessages {
             "Connections: New Oracle connection, New PostgreSQL connection\n" +
             "Enter: select saved connection or open selected action\n" +
             "Metadata commands: tables, describe <table>, indexes <table>\n" +
-            "Query library: lib save <name>, lib list, lib search <text>, lib load <id> --replace, lib delete <id> --yes\n" +
+            "Query library: lib save <name>, lib save <name> --template, lib list, lib search <text>, lib load <id> --replace, lib preview <id> --param name=value, lib fill <id> --replace --param name=value, lib delete <id> --yes\n" +
+            "Templates: use {{name}}; duplicates are prompted once and reused. Raw substitution warning: quote and escape values before running.\n" +
             "Saved SQL may contain sensitive data. Loading a query does not execute it.\n" +
             "Language: use the Language action in the left pane\n" +
             "Close help: Esc or Enter on Close"
@@ -312,6 +342,36 @@ public final class TuiMessages {
 
     String exportOverwriteCancelled() {
         return language == TuiLanguage.SPANISH ? "Sobrescritura de exportacion cancelada" : "Export overwrite cancelled";
+    }
+
+    String dangerousSqlConfirmationTitle(boolean production) {
+        if (production) {
+            return language == TuiLanguage.SPANISH ? "Confirmacion SQL peligrosa en PROD" : "Dangerous PROD SQL confirmation";
+        }
+        return language == TuiLanguage.SPANISH ? "Confirmacion SQL peligrosa" : "Dangerous SQL confirmation";
+    }
+
+    String dangerousSqlConfirmationMessage(String operation, String requiredConfirmation, boolean production) {
+        if (language == TuiLanguage.SPANISH) {
+            if (production) {
+                return (
+                    "Riesgo alto: " +
+                    operation +
+                    " en una conexion PROD. Escribe " +
+                    requiredConfirmation +
+                    " exactamente para ejecutar una sola vez."
+                );
+            }
+            return ("Riesgo: " + operation + " puede modificar datos. Escribe " + requiredConfirmation + " para ejecutar una sola vez.");
+        }
+        if (production) {
+            return ("High risk: " + operation + " on a PROD connection. Type " + requiredConfirmation + " exactly to execute once.");
+        }
+        return "Risk: " + operation + " can change data. Type " + requiredConfirmation + " to execute once.";
+    }
+
+    String dangerousSqlCanceled() {
+        return language == TuiLanguage.SPANISH ? "Ejecucion SQL peligrosa cancelada" : "Dangerous SQL execution canceled";
     }
 
     String continueAction() {

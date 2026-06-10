@@ -134,6 +134,35 @@ public class QueryLibraryStoreTest {
         assertEquals(1, entries.size());
         assertEquals("valid", entries.get(0).id());
         assertEquals(Arrays.asList("legacy"), entries.get(0).tags());
+        assertFalse(entries.get(0).template());
+        assertTrue(entries.get(0).templateParameters().isEmpty());
+    }
+
+    @Test
+    public void savesAndLoadsTemplateMetadataWithoutPersistingValues() throws Exception {
+        File file = new File(temporaryFolder.newFolder("templates"), "query-library.properties");
+        QueryLibraryStore store = new QueryLibraryStore(file, CLOCK);
+
+        QueryLibraryEntry saved = store.saveTemplate(
+            "Customer Template",
+            "select * from customers where id = {{customer_id}} and status = {{status}}",
+            "Template lookup",
+            Arrays.asList("support"),
+            false,
+            "DEV",
+            "dev-support",
+            Arrays.asList("customer_id", "status"),
+            false
+        );
+        QueryLibraryEntry loaded = new QueryLibraryStore(file, CLOCK).load("customer-template");
+        String stored = new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(saved.template());
+        assertTrue(loaded.template());
+        assertEquals(Arrays.asList("customer_id", "status"), loaded.templateParameters());
+        assertEquals(CLOCK.instant(), loaded.templateUpdatedAt());
+        assertFalse(stored.contains("acme"));
+        assertFalse(stored.contains("customer_id=acme"));
     }
 
     @Test

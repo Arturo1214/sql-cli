@@ -5,6 +5,7 @@ import bo.ahosoft.sqlscript.config.*;
 import bo.ahosoft.sqlscript.db.*;
 import bo.ahosoft.sqlscript.domain.*;
 import bo.ahosoft.sqlscript.sql.*;
+import bo.ahosoft.sqlscript.template.*;
 import bo.ahosoft.sqlscript.tui.*;
 import java.io.BufferedReader;
 import java.io.File;
@@ -100,6 +101,8 @@ public final class InteractiveWorkspace {
             type == WorkspaceCommand.Type.LIB_LIST ||
             type == WorkspaceCommand.Type.LIB_SEARCH ||
             type == WorkspaceCommand.Type.LIB_LOAD ||
+            type == WorkspaceCommand.Type.LIB_PREVIEW ||
+            type == WorkspaceCommand.Type.LIB_FILL ||
             type == WorkspaceCommand.Type.LIB_DELETE ||
             type == WorkspaceCommand.Type.LIB_FAVORITE ||
             type == WorkspaceCommand.Type.LIB_UNFAVORITE
@@ -382,6 +385,28 @@ public final class InteractiveWorkspace {
             return runCurrentBuffer(editorText, cursorOffset, Collections.<String>emptyList());
         }
 
+        public String runCurrentBufferWithUnsafeConfirmation(String editorText, int cursorOffset, String confirmation) {
+            List<String> arguments = new ArrayList<String>();
+            arguments.add("--unsafe");
+            arguments.add("--confirm-risk");
+            arguments.add(confirmation == null ? "" : confirmation);
+            return runCurrentBuffer(editorText, cursorOffset, arguments);
+        }
+
+        public void markDangerousSqlCanceled() {
+            lastError = null;
+            lastResult = "Dangerous SQL execution canceled";
+            lastExecutionResult = new SqlExecutionResult(lastResult);
+            statusMessage = lastResult;
+        }
+
+        public void markDangerousSqlConfirmationMismatch() {
+            lastError = null;
+            lastResult = "Confirmation did not match. Dangerous SQL was not executed.";
+            lastExecutionResult = new SqlExecutionResult(lastResult);
+            statusMessage = lastResult;
+        }
+
         private String runCurrentBuffer(String editorText, int cursorOffset, List<String> arguments) {
             buffer = editorText == null ? "" : editorText;
             try {
@@ -530,13 +555,19 @@ public final class InteractiveWorkspace {
                 if (command.type() == WorkspaceCommand.Type.LIB_LOAD) {
                     return loadLibraryQuery(command);
                 }
+                if (command.type() == WorkspaceCommand.Type.LIB_PREVIEW) {
+                    return previewLibraryTemplate(command);
+                }
+                if (command.type() == WorkspaceCommand.Type.LIB_FILL) {
+                    return fillLibraryTemplate(command);
+                }
                 if (command.type() == WorkspaceCommand.Type.LIB_DELETE) {
                     return deleteLibraryQuery(command);
                 }
                 if (command.type() == WorkspaceCommand.Type.LIB_FAVORITE || command.type() == WorkspaceCommand.Type.LIB_UNFAVORITE) {
                     return favoriteLibraryQuery(command);
                 }
-                return fail("library supports save, list, search, load, delete, favorite, unfavorite");
+                return fail("library supports save, list, search, load, preview, fill, delete, favorite, unfavorite");
             } catch (Exception ex) {
                 return fail(ex.getMessage());
             }
@@ -558,6 +589,28 @@ public final class InteractiveWorkspace {
                 favorite,
                 activeConnection() == null ? "" : activeConnection().environment().name(),
                 activeConnectionName == null ? "" : activeConnectionName,
+                overwrite
+            );
+        }
+
+        public QueryLibraryEntry saveTemplateQueryLibraryEntry(
+            String name,
+            String sql,
+            String description,
+            List<String> tags,
+            boolean favorite,
+            List<String> templateParameters,
+            boolean overwrite
+        ) throws IOException {
+            return queryLibraryStore.saveTemplate(
+                name,
+                sql,
+                description,
+                tags,
+                favorite,
+                activeConnection() == null ? "" : activeConnection().environment().name(),
+                activeConnectionName == null ? "" : activeConnectionName,
+                templateParameters,
                 overwrite
             );
         }
@@ -694,14 +747,39 @@ public final class InteractiveWorkspace {
                 return fail("Cannot save an empty buffer");
             }
             ParsedLibrarySave parsed = ParsedLibrarySave.from(command.arguments());
-            QueryLibraryEntry entry = queryLibraryStore.save(
+            String environmentScope = activeConnection() == null ? "" : activeConnection().environment().name();
+            String connectionScope = activeConnectionName == null ? "" : activeConnectionName;
+            QueryLibraryEntry entry;
+            if (parsed.template) {
+                QueryTemplate template = QueryTemplateParser.parse(buffer);
+                entry = queryLibraryStore.saveTemplate(
+                    parsed.name,
+                    buffer,
+                    parsed.description,
+                    parsed.tags,
+                    parsed.favorite,
+                    environmentScope,
+                    connectionScope,
+                    parameterNames(template),
+                    parsed.overwrite
+                );
+                return ok(
+                    "Saved template: " +
+                    entry.id() +
+                    System.lineSeparator() +
+                    QueryLibraryStore.PRIVACY_WARNING +
+                    System.lineSeparator() +
+                    QueryLibraryStore.RAW_SUBSTITUTION_WARNING
+                );
+            }
+            entry = queryLibraryStore.save(
                 parsed.name,
                 buffer,
                 parsed.description,
                 parsed.tags,
                 parsed.favorite,
-                activeConnection() == null ? "" : activeConnection().environment().name(),
-                activeConnectionName == null ? "" : activeConnectionName,
+                environmentScope,
+                connectionScope,
                 parsed.overwrite
             );
             return ok("Saved query: " + entry.id() + System.lineSeparator() + QueryLibraryStore.PRIVACY_WARNING);
@@ -715,6 +793,35 @@ public final class InteractiveWorkspace {
             }
             replaceBuffer(entry.sql());
             return ok("Loaded query into buffer: " + entry.id());
+        }
+
+        private String previewLibraryTemplate(WorkspaceCommand command) throws IOException {
+            String id = requiredFirstArgument(command, "lib preview requires <id> --param name=value");
+            QueryLibraryEntry entry = queryLibraryStore.load(id);
+            RenderedQueryTemplate rendered = renderTemplateEntry(entry, parseParameters(command.arguments()));
+            return ok(QueryLibraryStore.RAW_SUBSTITUTION_WARNING + System.lineSeparator() + rendered.sql());
+        }
+
+        private String fillLibraryTemplate(WorkspaceCommand command) throws IOException {
+            String id = requiredFirstArgument(command, "lib fill requires <id> [--replace] --param name=value");
+            QueryLibraryEntry entry = queryLibraryStore.load(id);
+            RenderedQueryTemplate rendered = renderTemplateEntry(entry, parseParameters(command.arguments()));
+            if (
+                buffer != null && !buffer.trim().isEmpty() && !buffer.equals(rendered.sql()) && !hasFlag(command.arguments(), "--replace")
+            ) {
+                return fail("Buffer has content. Re-run with --replace to load rendered template: " + entry.id());
+            }
+            replaceBuffer(rendered.sql());
+            return ok(
+                "Rendered template loaded into buffer: " + entry.id() + System.lineSeparator() + QueryLibraryStore.RAW_SUBSTITUTION_WARNING
+            );
+        }
+
+        private RenderedQueryTemplate renderTemplateEntry(QueryLibraryEntry entry, Map<String, String> values) {
+            if (!entry.template()) {
+                throw new IllegalArgumentException("Query is not a template: " + entry.id());
+            }
+            return QueryTemplateRenderer.render(QueryTemplateParser.parse(entry.sql()), values);
         }
 
         private String deleteLibraryQuery(WorkspaceCommand command) throws IOException {
@@ -756,6 +863,42 @@ public final class InteractiveWorkspace {
             return command.arguments().get(0);
         }
 
+        private static List<String> parameterNames(QueryTemplate template) {
+            List<String> names = new ArrayList<>();
+            for (TemplateParameter parameter : template.parameters()) {
+                names.add(parameter.name());
+            }
+            return names;
+        }
+
+        private static Map<String, String> parseParameters(List<String> arguments) {
+            Map<String, String> values = new LinkedHashMap<>();
+            for (int i = 0; i < arguments.size(); i++) {
+                String argument = arguments.get(i);
+                if ("--param".equals(argument)) {
+                    if (i + 1 >= arguments.size()) {
+                        throw new IllegalArgumentException("--param requires name=value");
+                    }
+                    addParameter(values, arguments.get(++i));
+                } else if (argument.startsWith("--param=")) {
+                    addParameter(values, argument.substring("--param=".length()));
+                }
+            }
+            return values;
+        }
+
+        private static void addParameter(Map<String, String> values, String assignment) {
+            int separator = assignment == null ? -1 : assignment.indexOf('=');
+            if (separator <= 0) {
+                throw new IllegalArgumentException("--param requires name=value");
+            }
+            String name = assignment.substring(0, separator).trim();
+            if (name.isEmpty()) {
+                throw new IllegalArgumentException("--param requires name=value");
+            }
+            values.put(name, assignment.substring(separator + 1));
+        }
+
         private static String joinDisplay(List<String> values) {
             StringBuilder joined = new StringBuilder();
             for (String value : values) {
@@ -787,13 +930,22 @@ public final class InteractiveWorkspace {
             private final List<String> tags;
             private final boolean favorite;
             private final boolean overwrite;
+            private final boolean template;
 
-            private ParsedLibrarySave(String name, String description, List<String> tags, boolean favorite, boolean overwrite) {
+            private ParsedLibrarySave(
+                String name,
+                String description,
+                List<String> tags,
+                boolean favorite,
+                boolean overwrite,
+                boolean template
+            ) {
                 this.name = name;
                 this.description = description;
                 this.tags = tags;
                 this.favorite = favorite;
                 this.overwrite = overwrite;
+                this.template = template;
             }
 
             private static ParsedLibrarySave from(List<String> arguments) {
@@ -802,6 +954,7 @@ public final class InteractiveWorkspace {
                 List<String> tags = Collections.emptyList();
                 boolean favorite = false;
                 boolean overwrite = false;
+                boolean template = false;
                 for (int i = 0; i < arguments.size(); i++) {
                     String argument = arguments.get(i);
                     if ("--desc".equals(argument) || "--description".equals(argument)) {
@@ -822,6 +975,8 @@ public final class InteractiveWorkspace {
                         favorite = true;
                     } else if ("--overwrite".equals(argument)) {
                         overwrite = true;
+                    } else if ("--template".equals(argument)) {
+                        template = true;
                     } else if (argument.startsWith("--")) {
                         throw new IllegalArgumentException("Unsupported lib save option: " + argument);
                     } else {
@@ -832,7 +987,7 @@ public final class InteractiveWorkspace {
                 if (name.trim().isEmpty()) {
                     throw new IllegalArgumentException("lib save requires <name>");
                 }
-                return new ParsedLibrarySave(name, description, tags, favorite, overwrite);
+                return new ParsedLibrarySave(name, description, tags, favorite, overwrite, template);
             }
 
             private static String joinDisplayWithSpace(List<String> values) {

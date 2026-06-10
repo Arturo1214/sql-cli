@@ -40,6 +40,8 @@ public final class WorkspaceCommand {
         LIB_LIST,
         LIB_SEARCH,
         LIB_LOAD,
+        LIB_PREVIEW,
+        LIB_FILL,
         LIB_DELETE,
         LIB_FAVORITE,
         LIB_UNFAVORITE,
@@ -183,6 +185,12 @@ public final class WorkspaceCommand {
         }
         if ("load".equals(subcommand)) {
             return new WorkspaceCommand(Type.LIB_LOAD, arguments, remaining);
+        }
+        if ("preview".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_PREVIEW, arguments, remaining);
+        }
+        if ("fill".equals(subcommand) || "render".equals(subcommand)) {
+            return new WorkspaceCommand(Type.LIB_FILL, arguments, remaining);
         }
         if ("delete".equals(subcommand)) {
             return new WorkspaceCommand(Type.LIB_DELETE, arguments, remaining);

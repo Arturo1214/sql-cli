@@ -440,6 +440,68 @@ public class InteractiveWorkspaceTest {
     }
 
     @Test
+    public void queryLibraryTemplateCommandsSavePreviewAndFillWithoutAutoExecution() throws Exception {
+        QueryLibraryStore store = queryLibraryStore();
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(null, editorStore(), executor, store);
+        session.bufferCommand(
+            WorkspaceCommand.parse("buffer set select * from customers where id = {{customer_id}} and status = {{status}}")
+        );
+
+        String saved = session.libraryCommand(WorkspaceCommand.parse("lib save Customer Template --template --tags support"));
+        QueryLibraryEntry entry = store.load("customer-template");
+        String preview = session.libraryCommand(
+            WorkspaceCommand.parse("lib preview customer-template --param customer_id=42 --param status='ACTIVE'")
+        );
+        String blocked = session.libraryCommand(
+            WorkspaceCommand.parse("lib fill customer-template --param customer_id=42 --param status='ACTIVE'")
+        );
+        String filled = session.libraryCommand(
+            WorkspaceCommand.parse("lib fill customer-template --replace --param customer_id=42 --param status='ACTIVE'")
+        );
+
+        assertTrue(saved.contains("Saved template: customer-template"));
+        assertTrue(saved.contains("Raw substitution warning"));
+        assertTrue(entry.template());
+        assertEquals(Arrays.asList("customer_id", "status"), entry.templateParameters());
+        assertTrue(preview.contains("select * from customers where id = 42 and status = 'ACTIVE'"));
+        assertTrue(preview.contains("Raw substitution warning"));
+        assertEquals("Buffer has content. Re-run with --replace to load rendered template: customer-template", blocked);
+        assertTrue(filled.contains("Rendered template loaded into buffer: customer-template"));
+        assertEquals("select * from customers where id = 42 and status = 'ACTIVE'", session.dashboardState().buffer());
+        assertEquals(null, executor.statement);
+    }
+
+    @Test
+    public void queryLibraryTemplateFillReportsMissingValuesAndPreservesSafetyGuard() throws Exception {
+        QueryLibraryStore store = queryLibraryStore();
+        store.saveTemplate(
+            "Delete Template",
+            "delete from users where id = {{user_id}}",
+            "dangerous template",
+            Arrays.asList("ops"),
+            false,
+            "",
+            "",
+            Arrays.asList("user_id"),
+            false
+        );
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(null, editorStore(), executor, store);
+        session.addConnection("local", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "secret"));
+
+        String missing = session.libraryCommand(WorkspaceCommand.parse("lib fill delete-template --replace"));
+        String filled = session.libraryCommand(WorkspaceCommand.parse("lib fill delete-template --replace --param user_id=7"));
+        String runBlocked = session.runCurrentBuffer();
+
+        assertEquals("Missing value for template parameter: user_id", missing);
+        assertTrue(filled.contains("Rendered template loaded into buffer: delete-template"));
+        assertEquals("delete from users where id = 7", session.dashboardState().buffer());
+        assertTrue(runBlocked.contains("Safety mode blocked a dangerous SQL statement"));
+        assertEquals(null, executor.statement);
+    }
+
+    @Test
     public void replDispatchesQueryLibraryCommandsAndPreservesMetadataWorkflow() throws Exception {
         InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
             null,

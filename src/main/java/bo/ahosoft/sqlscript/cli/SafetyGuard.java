@@ -64,6 +64,22 @@ public final class SafetyGuard {
         return normalized.matches("(?s).*(^|[;\\s])(update|delete|insert|merge|drop|truncate|alter|create|grant|revoke)\\s+.*");
     }
 
+    public static String destructiveOperation(String script) {
+        if (script == null) {
+            return "SQL";
+        }
+        String normalized = stripComments(script).trim().toLowerCase();
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+            "(?s)(^|[;\\s])(update|delete|insert|merge|drop|truncate|alter|create|grant|revoke)\\s+.*"
+        ).matcher(normalized);
+        return matcher.find() ? matcher.group(2).toUpperCase(java.util.Locale.ROOT) : "SQL";
+    }
+
+    public static String requiredConfirmation(ConnectionEnvironment environment, String connectionName) {
+        ConnectionEnvironment effectiveEnvironment = environment == null ? ConnectionEnvironment.DEV : environment;
+        return effectiveEnvironment.isProduction() ? safeConnectionName(connectionName) : "RUN";
+    }
+
     private static String safeConnectionName(String connectionName) {
         return connectionName == null || connectionName.trim().isEmpty() ? REQUIRED_CONFIRMATION : connectionName.trim();
     }
