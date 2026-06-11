@@ -161,6 +161,32 @@ public class Gui2WorkspaceLayout {
             );
             index++;
         }
+        if (!connections.isEmpty()) {
+            explorer.addItem(
+                messages.editSelectedConnectionAction(),
+                new Runnable() {
+                    public void run() {
+                        actions.editSelectedConnection();
+                    }
+                }
+            );
+            explorer.addItem(
+                messages.testSelectedConnectionAction(),
+                new Runnable() {
+                    public void run() {
+                        actions.testSelectedConnection();
+                    }
+                }
+            );
+            explorer.addItem(
+                messages.deleteSelectedConnectionAction(),
+                new Runnable() {
+                    public void run() {
+                        actions.deleteSelectedConnection();
+                    }
+                }
+            );
+        }
         explorer.addItem(messages.newOracleConnection(), dialogAction(actions, DatabaseType.ORACLE));
         explorer.addItem(messages.newPostgresqlConnection(), dialogAction(actions, DatabaseType.POSTGRESQL));
         explorer.addItem(
@@ -414,6 +440,12 @@ public class Gui2WorkspaceLayout {
 
         void openExportDialog(ExportScope scope);
 
+        void editSelectedConnection();
+
+        void testSelectedConnection();
+
+        void deleteSelectedConnection();
+
         boolean handleWorkspaceKeyStroke(KeyStroke keyStroke);
 
         public static WorkspaceUiActions noop() {
@@ -431,6 +463,12 @@ public class Gui2WorkspaceLayout {
                 public void openQueryLibraryDialog() {}
 
                 public void openExportDialog(ExportScope scope) {}
+
+                public void editSelectedConnection() {}
+
+                public void testSelectedConnection() {}
+
+                public void deleteSelectedConnection() {}
 
                 public boolean handleWorkspaceKeyStroke(KeyStroke keyStroke) {
                     return false;

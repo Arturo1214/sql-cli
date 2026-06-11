@@ -28,10 +28,53 @@ public final class ConnectionRegistry {
     public void save(String name, ConnectionConfig config) throws IOException {
         validateName(name);
         validate(config);
+        ensureDirectoryExists();
+
+        Properties properties = toProperties(config);
+        FileOutputStream output = new FileOutputStream(connectionFile(name));
+        try {
+            properties.store(output, "Database Script CLI connection profile");
+        } finally {
+            output.close();
+        }
+    }
+
+    public boolean exists(String name) {
+        validateName(name);
+        return connectionFile(name).isFile();
+    }
+
+    public void update(String oldName, String newName, ConnectionConfig config) throws IOException {
+        validateName(oldName);
+        validateName(newName);
+        validate(config);
+        File oldFile = connectionFile(oldName);
+        File newFile = connectionFile(newName);
+        if (!oldFile.isFile()) {
+            throw new IllegalArgumentException("Connection profile does not exist: " + oldName);
+        }
+        if (!oldName.equals(newName) && newFile.isFile()) {
+            throw new IllegalArgumentException("Connection profile already exists: " + newName);
+        }
+        save(newName, config);
+        if (!oldName.equals(newName) && oldFile.isFile() && !oldFile.delete()) {
+            throw new IOException("Could not delete old connection profile: " + oldName);
+        }
+    }
+
+    public boolean delete(String name) {
+        validateName(name);
+        File file = connectionFile(name);
+        return file.isFile() && file.delete();
+    }
+
+    private void ensureDirectoryExists() throws IOException {
         if (!directory.exists() && !directory.mkdirs()) {
             throw new IOException("Could not create connection directory: " + directory.getAbsolutePath());
         }
+    }
 
+    private Properties toProperties(ConnectionConfig config) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("type", config.databaseType().name());
         properties.setProperty("environment", config.environment().name());
@@ -41,13 +84,7 @@ public final class ConnectionRegistry {
         if (config.databaseType() == DatabaseType.POSTGRESQL && !config.schemas().isEmpty()) {
             properties.setProperty("schemas", ConfigStore.joinSchemas(config.schemas()));
         }
-
-        FileOutputStream output = new FileOutputStream(connectionFile(name));
-        try {
-            properties.store(output, "Database Script CLI connection profile");
-        } finally {
-            output.close();
-        }
+        return properties;
     }
 
     public ConnectionConfig load(String name) throws IOException {

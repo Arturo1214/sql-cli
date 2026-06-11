@@ -167,6 +167,67 @@ public class ConnectionRegistryTest {
         assertTrue(registry.list().get(0).toString().contains("PROD"));
     }
 
+    @Test
+    public void updatesExistingConnectionAndRenamesProfileWithoutExposingPassword() throws Exception {
+        ConnectionRegistry registry = registry();
+        registry.save("qa", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "old-secret"));
+
+        registry.update(
+            "qa",
+            "qa-prod",
+            new ConnectionConfig(
+                DatabaseType.ORACLE,
+                ConnectionEnvironment.PROD,
+                "jdbc:oracle:thin:@prod:1521/PROD",
+                "support",
+                "new-secret",
+                Arrays.<String>asList()
+            )
+        );
+
+        assertFalse(registry.exists("qa"));
+        assertTrue(registry.exists("qa-prod"));
+        ConnectionConfig loaded = registry.load("qa-prod");
+        assertEquals(ConnectionEnvironment.PROD, loaded.environment());
+        assertEquals("jdbc:oracle:thin:@prod:1521/PROD", loaded.jdbcUrl());
+        assertEquals("support", loaded.username());
+        assertEquals("new-secret", loaded.password());
+        assertFalse(readConnectionFile("qa-prod").contains("new-secret"));
+    }
+
+    @Test
+    public void updateRejectsMissingSourceAndDuplicateTarget() throws Exception {
+        ConnectionRegistry registry = registry();
+        registry.save("qa", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "secret"));
+        registry.save("prod", new ConnectionConfig("jdbc:oracle:thin:@prod:1521/PROD", "prod", "secret"));
+
+        assertUpdateRejected(
+            registry,
+            "missing",
+            "renamed",
+            new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "secret"),
+            "does not exist"
+        );
+        assertUpdateRejected(
+            registry,
+            "qa",
+            "prod",
+            new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "secret"),
+            "already exists"
+        );
+    }
+
+    @Test
+    public void deletesExistingConnectionAndReportsMissingProfiles() throws Exception {
+        ConnectionRegistry registry = registry();
+        registry.save("qa", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "secret"));
+
+        assertTrue(registry.delete("qa"));
+        assertFalse(registry.exists("qa"));
+        assertFalse(registry.delete("qa"));
+        assertTrue(registry.list().isEmpty());
+    }
+
     private ConnectionRegistry registry() throws Exception {
         File baseDirectory = temporaryFolder.newFolder("connections");
         ProtectedSecretStore secretStore = new ProtectedSecretStore(new File(baseDirectory, "secrets"));
@@ -188,5 +249,21 @@ public class ConnectionRegistryTest {
             return;
         }
         throw new AssertionError("Expected validation rejection");
+    }
+
+    private static void assertUpdateRejected(
+        ConnectionRegistry registry,
+        String oldName,
+        String newName,
+        ConnectionConfig config,
+        String expectedMessage
+    ) throws Exception {
+        try {
+            registry.update(oldName, newName, config);
+        } catch (IllegalArgumentException ex) {
+            assertTrue(ex.getMessage().contains(expectedMessage));
+            return;
+        }
+        throw new AssertionError("Expected update rejection");
     }
 }

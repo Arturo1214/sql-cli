@@ -144,6 +144,7 @@ public final class InteractiveWorkspace {
         private final EditorStateStore editorStore;
         private final WorkspaceSqlExecutor executor;
         private final QueryLibraryStore queryLibraryStore;
+        private final ConnectionTestService connectionTestService;
         private String activeConnectionName;
         private String buffer = "";
         private List<String> history = Collections.emptyList();
@@ -157,6 +158,7 @@ public final class InteractiveWorkspace {
             this.editorStore = null;
             this.executor = new DefaultWorkspaceSqlExecutor();
             this.queryLibraryStore = new QueryLibraryStore();
+            this.connectionTestService = new ConnectionTestService();
         }
 
         public Session(ConnectionRegistry registry, EditorStateStore editorStore, WorkspaceSqlExecutor executor) throws IOException {
@@ -169,10 +171,21 @@ public final class InteractiveWorkspace {
             WorkspaceSqlExecutor executor,
             QueryLibraryStore queryLibraryStore
         ) throws IOException {
+            this(registry, editorStore, executor, queryLibraryStore, new ConnectionTestService());
+        }
+
+        public Session(
+            ConnectionRegistry registry,
+            EditorStateStore editorStore,
+            WorkspaceSqlExecutor executor,
+            QueryLibraryStore queryLibraryStore,
+            ConnectionTestService connectionTestService
+        ) throws IOException {
             this.registry = registry;
             this.editorStore = editorStore;
             this.executor = executor == null ? new DefaultWorkspaceSqlExecutor() : executor;
             this.queryLibraryStore = queryLibraryStore == null ? new QueryLibraryStore() : queryLibraryStore;
+            this.connectionTestService = connectionTestService == null ? new ConnectionTestService() : connectionTestService;
             EditorStateStore.EditorState state = editorStore.load();
             this.buffer = state.buffer();
             this.history = state.history();
@@ -231,6 +244,10 @@ public final class InteractiveWorkspace {
 
         public ConnectionConfig activeConnection() {
             return activeConnectionName == null ? null : connections.get(activeConnectionName);
+        }
+
+        public ConnectionConfig connectionNamed(String name) {
+            return name == null ? null : connections.get(name);
         }
 
         public ConnectionConfig createConnection(
@@ -371,6 +388,49 @@ public final class InteractiveWorkspace {
             }
             ok("Connection saved: " + name);
             return config;
+        }
+
+        public ConnectionConfig editConnectionFromAction(String oldName, String newName, ConnectionConfig config) throws IOException {
+            if (registry != null) {
+                registry.update(oldName, newName, config);
+            }
+            connections.remove(oldName);
+            connections.put(newName, config);
+            if (oldName.equals(activeConnectionName)) {
+                activeConnectionName = newName;
+            }
+            ok("Connection updated: " + newName);
+            return config;
+        }
+
+        public boolean deleteConnectionFromAction(String name) throws IOException {
+            boolean deleted = registry == null ? connections.containsKey(name) : registry.delete(name);
+            if (!deleted) {
+                fail("Connection not found: " + name);
+                return false;
+            }
+            connections.remove(name);
+            if (name.equals(activeConnectionName)) {
+                disconnectActiveConnection();
+                ok("Connection deleted; no active connection selected");
+            } else {
+                ok("Connection deleted: " + name);
+            }
+            return true;
+        }
+
+        public void disconnectActiveConnection() {
+            activeConnectionName = null;
+            lastExecutionResult = null;
+            lastResult = null;
+            lastError = null;
+        }
+
+        public ConnectionTestResult testConnectionFromAction(ConnectionConfig draft, long timeoutMillis) {
+            ConnectionTestResult result = connectionTestService.test(draft, timeoutMillis);
+            statusMessage = result.message();
+            lastError = result.successful() ? null : result.message();
+            return result;
         }
 
         public String runCurrentBuffer() {

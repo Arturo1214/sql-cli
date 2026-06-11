@@ -68,4 +68,19 @@ public class ReadmeSupportWorkflowTest {
         assertTrue(readme.contains("UPDATE and DELETE require a top-level WHERE"));
         assertTrue(readme.contains("DROP, TRUNCATE, and ALTER keep the existing confirmation behavior"));
     }
+
+    @Test
+    public void readmeDocumentsConnectionEditDeleteTestAndPasswordRules() throws Exception {
+        String readme = new String(Files.readAllBytes(new File("README.md").toPath()), StandardCharsets.UTF_8);
+
+        assertTrue(readme.contains("Edit selected connection"));
+        assertTrue(readme.contains("Test selected connection"));
+        assertTrue(readme.contains("Delete selected connection"));
+        assertTrue(readme.contains("explicit confirmation before deletion"));
+        assertTrue(readme.contains("Deleting the active connection leaves the workspace disconnected"));
+        assertTrue(readme.contains("Testing a connection never saves the draft"));
+        assertTrue(readme.contains("Leave the edit password blank to keep the existing secret"));
+        assertTrue(readme.contains("Newly typed replacement passwords can be revealed"));
+        assertTrue(readme.contains("bounded timeout"));
+    }
 }

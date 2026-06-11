@@ -155,11 +155,20 @@ Raw substitution warning: template values are inserted as text. Quote and escape
 
 The left menu lists saved connections and includes:
 
+- `Edit selected connection`.
+- `Test selected connection`.
+- `Delete selected connection`.
 - `New Oracle connection`.
 - `New PostgreSQL connection`.
 - `Language: English` / `Idioma: Espanol` action for in-session UI switching.
 
 The connection wizard prompts for name, JDBC URL, username, password, and schemas, and uses a constrained environment selector. Required fields are validated before save. PostgreSQL can use schema input; Oracle ignores schema input.
+
+Saved connection workflows stay keyboard-only for SSH sessions. Editing opens the same terminal dialog in edit mode and saves through the connection registry, so renamed active connections refresh the menu and status in place. Leave the edit password blank to keep the existing secret. Newly typed replacement passwords can be revealed before saving, but stored passwords are never pre-filled or revealed.
+
+Testing a connection never saves the draft. The test action can be used from the selected-connection flow or from create/edit dialogs, runs with a bounded timeout, reports success/failure/timeout in the terminal UI, and leaves saved connection data unchanged until an explicit save.
+
+Deleting a saved connection requires explicit confirmation before deletion. Deleting the active connection leaves the workspace disconnected, clears the active status, and refreshes the connection menu so later SQL execution cannot accidentally reuse a removed profile.
 
 Environment values are stable labels: `DEV`, `QA`, `STAGING`, and `PROD`. Legacy configs without an environment load as `DEV` so existing profiles keep working; newly saved configs persist `environment=DEV` unless another value is selected.
 

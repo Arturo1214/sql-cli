@@ -47,7 +47,7 @@ public class Gui2WorkspaceLayoutTest {
         assertSame(components.root(), components.window().getComponent());
         assertTrue(components.root() instanceof Panel);
         assertTrue(components.explorer() instanceof ActionListBox);
-        assertEquals(10, components.explorer().getItemCount());
+        assertEquals(13, components.explorer().getItemCount());
         assertTrue(components.sqlEditor() instanceof TextBox);
         assertEquals("select *\nfrom users", components.sqlEditor().getText());
         assertFalse(components.sqlEditor().isReadOnly());
@@ -96,13 +96,13 @@ public class Gui2WorkspaceLayoutTest {
         ActionListBox explorer = components.explorer();
         explorer.takeFocus();
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 20; i++) {
             assertEquals(Interactable.Result.HANDLED, explorer.handleInput(new KeyStroke(KeyType.ArrowDown)));
         }
         assertEquals(explorer.getItemCount() - 1, explorer.getSelectedIndex());
         assertTrue(explorer.isFocused());
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 20; i++) {
             assertEquals(Interactable.Result.HANDLED, explorer.handleInput(new KeyStroke(KeyType.ArrowUp)));
         }
         assertEquals(0, explorer.getSelectedIndex());
@@ -192,23 +192,41 @@ public class Gui2WorkspaceLayoutTest {
         RecordingActions actions = new RecordingActions();
         Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout().build(stateWithConnection(), actions);
 
-        components.explorer().setSelectedIndex(3);
-        components.explorer().runSelectedItem();
-        components.explorer().setSelectedIndex(4);
-        components.explorer().runSelectedItem();
-        components.explorer().setSelectedIndex(5);
-        components.explorer().runSelectedItem();
         components.explorer().setSelectedIndex(6);
         components.explorer().runSelectedItem();
         components.explorer().setSelectedIndex(7);
         components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(8);
+        components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(9);
+        components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(10);
+        components.explorer().runSelectedItem();
 
         assertEquals("load,save-library,open-library,current,all", actions.calls);
-        assertEquals("Load SQL File (F6)", components.explorer().getItemAt(3).toString());
-        assertEquals("Save Query to Library (F9)", components.explorer().getItemAt(4).toString());
-        assertEquals("Open Query Library (F10)", components.explorer().getItemAt(5).toString());
-        assertEquals("Export Current Page CSV (F7)", components.explorer().getItemAt(6).toString());
-        assertEquals("Export All Pages CSV (F8)", components.explorer().getItemAt(7).toString());
+        assertEquals("Load SQL File (F6)", components.explorer().getItemAt(6).toString());
+        assertEquals("Save Query to Library (F9)", components.explorer().getItemAt(7).toString());
+        assertEquals("Open Query Library (F10)", components.explorer().getItemAt(8).toString());
+        assertEquals("Export Current Page CSV (F7)", components.explorer().getItemAt(9).toString());
+        assertEquals("Export All Pages CSV (F8)", components.explorer().getItemAt(10).toString());
+    }
+
+    @Test
+    public void explorerIncludesKeyboardActionsForSelectedConnection() {
+        RecordingActions actions = new RecordingActions();
+        Gui2WorkspaceLayout.WorkspaceComponents components = new Gui2WorkspaceLayout().build(stateWithConnection(), actions);
+
+        components.explorer().setSelectedIndex(1);
+        components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(2);
+        components.explorer().runSelectedItem();
+        components.explorer().setSelectedIndex(3);
+        components.explorer().runSelectedItem();
+
+        assertEquals("edit,test,delete", actions.calls);
+        assertEquals("Edit selected connection", components.explorer().getItemAt(1).toString());
+        assertEquals("Test selected connection", components.explorer().getItemAt(2).toString());
+        assertEquals("Delete selected connection", components.explorer().getItemAt(3).toString());
     }
 
     @Test
@@ -266,6 +284,18 @@ public class Gui2WorkspaceLayoutTest {
 
         public void openExportDialog(ExportScope scope) {
             calls = append(calls, scope == ExportScope.CURRENT_PAGE ? "current" : "all");
+        }
+
+        public void editSelectedConnection() {
+            calls = append(calls, "edit");
+        }
+
+        public void testSelectedConnection() {
+            calls = append(calls, "test");
+        }
+
+        public void deleteSelectedConnection() {
+            calls = append(calls, "delete");
         }
 
         public boolean handleWorkspaceKeyStroke(KeyStroke keyStroke) {

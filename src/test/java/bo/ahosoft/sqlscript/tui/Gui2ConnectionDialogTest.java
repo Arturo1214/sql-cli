@@ -10,11 +10,18 @@ import bo.ahosoft.sqlscript.db.*;
 import bo.ahosoft.sqlscript.domain.*;
 import bo.ahosoft.sqlscript.sql.*;
 import bo.ahosoft.sqlscript.tui.*;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Collections;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 
 public class Gui2ConnectionDialogTest {
+
+    @Rule
+    public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
     @Test
     public void validationPreventsSessionCreationForMissingNameOrWrongJdbcUrl() {
@@ -247,5 +254,212 @@ public class Gui2ConnectionDialogTest {
         assertEquals(Arrays.asList("public"), postgresql.config().schemas());
         assertTrue(oracle.created());
         assertTrue(oracle.config().schemas().isEmpty());
+    }
+
+    @Test
+    public void createModeAllowsNewPasswordRevealWithoutChangingSavedValue() {
+        Gui2ConnectionDialog.Form form = new Gui2ConnectionDialog(new InteractiveWorkspace.Session()).open(DatabaseType.ORACLE);
+
+        form.password("secret");
+        assertEquals(Gui2ConnectionDialog.Mode.CREATE, form.mode());
+        assertEquals("******", form.passwordDisplayValue());
+
+        form.togglePasswordReveal();
+        assertEquals("secret", form.passwordDisplayValue());
+
+        form.togglePasswordReveal();
+        assertEquals("******", form.passwordDisplayValue());
+        assertEquals("secret", form.passwordDraft().resolve(null));
+    }
+
+    @Test
+    public void editModePrefillsConnectionWithoutRevealingExistingPassword() {
+        ConnectionConfig existing = new ConnectionConfig(
+            DatabaseType.POSTGRESQL,
+            ConnectionEnvironment.STAGING,
+            "jdbc:postgresql://localhost:5432/app",
+            "pg",
+            "stored-secret",
+            Arrays.asList("audit")
+        );
+
+        Gui2ConnectionDialog.Form form = new Gui2ConnectionDialog(new InteractiveWorkspace.Session()).openEdit("reporting", existing);
+
+        assertEquals(Gui2ConnectionDialog.Mode.EDIT, form.mode());
+        assertEquals("reporting", form.name());
+        assertEquals(ConnectionEnvironment.STAGING, form.environment());
+        assertEquals("jdbc:postgresql://localhost:5432/app", form.jdbcUrl());
+        assertEquals("pg", form.username());
+        assertEquals(Arrays.asList("audit"), form.selectedSchemas());
+        assertEquals("", form.passwordDisplayValue());
+
+        form.togglePasswordReveal();
+        assertEquals("", form.passwordDisplayValue());
+        assertTrue(form.passwordDraft().preservesExisting());
+        assertEquals("stored-secret", form.passwordDraft().resolve("stored-secret"));
+    }
+
+    @Test
+    public void editBlankPasswordPreservesSecretAndReplacementCanBeRevealedBeforeSave() {
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session();
+        ConnectionConfig existing = new ConnectionConfig(
+            DatabaseType.ORACLE,
+            ConnectionEnvironment.DEV,
+            "jdbc:oracle:thin:@localhost:1521/XEPDB1",
+            "ora",
+            "stored-secret",
+            Collections.<String>emptyList()
+        );
+        session.addConnection("local", existing);
+        Gui2ConnectionDialog.Form form = new Gui2ConnectionDialog(session).openEdit("local", existing);
+
+        Gui2ConnectionDialog.Result preserved = form.save();
+
+        assertTrue(preserved.created());
+        assertEquals("stored-secret", preserved.config().password());
+        assertEquals("stored-secret", session.activeConnection().password());
+
+        form.password("replacement");
+        assertEquals("***********", form.passwordDisplayValue());
+        form.togglePasswordReveal();
+        assertEquals("replacement", form.passwordDisplayValue());
+
+        Gui2ConnectionDialog.Result replaced = form.save();
+
+        assertTrue(replaced.created());
+        assertEquals("replacement", replaced.config().password());
+    }
+
+    @Test
+    public void invalidEditDraftIsRejectedBeforeSessionMutation() {
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session();
+        ConnectionConfig existing = new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "stored-secret");
+        session.addConnection("local", existing);
+        Gui2ConnectionDialog.Form form = new Gui2ConnectionDialog(session).openEdit("local", existing);
+
+        Gui2ConnectionDialog.Result result = form.jdbcUrl("jdbc:postgresql://localhost:5432/app").save();
+
+        assertFalse(result.created());
+        assertEquals("JDBC URL does not match Oracle", result.message());
+        assertEquals("jdbc:oracle:thin:@localhost:1521/XEPDB1", session.activeConnection().jdbcUrl());
+        assertEquals("stored-secret", session.activeConnection().password());
+    }
+
+    @Test
+    public void testConnectionFeedbackUsesDraftWithoutSavingIt() throws Exception {
+        InteractiveWorkspace.Session session = sessionWithTestResult(ConnectionTestResult.success());
+        Gui2ConnectionDialog.Form form = new Gui2ConnectionDialog(session).open(DatabaseType.POSTGRESQL);
+
+        Gui2ConnectionDialog.Result result = form
+            .name("reporting")
+            .jdbcUrl("jdbc:postgresql://localhost:5432/app")
+            .username("pg")
+            .password("secret")
+            .testConnection(250L);
+
+        assertFalse(result.created());
+        assertEquals("Connection test succeeded", result.message());
+        assertEquals("Connection test succeeded", form.feedback());
+        assertTrue(session.connectionNames().isEmpty());
+    }
+
+    @Test
+    public void testConnectionFailureAndTimeoutFeedbackNeverPersistDraft() throws Exception {
+        InteractiveWorkspace.Session failedSession = sessionWithTestResult(ConnectionTestResult.failure("bad credentials"));
+        Gui2ConnectionDialog.Form failedForm = new Gui2ConnectionDialog(failedSession).open(DatabaseType.ORACLE);
+        Gui2ConnectionDialog.Result failed = failedForm
+            .name("local")
+            .jdbcUrl("jdbc:oracle:thin:@localhost:1521/XEPDB1")
+            .username("ora")
+            .password("bad")
+            .testConnection(100L);
+
+        assertFalse(failed.created());
+        assertEquals("bad credentials", failed.message());
+        assertTrue(failedSession.connectionNames().isEmpty());
+
+        InteractiveWorkspace.Session timeoutSession = sessionWithTestResult(ConnectionTestResult.timeout(100L));
+        Gui2ConnectionDialog.Form timeoutForm = new Gui2ConnectionDialog(timeoutSession).open(DatabaseType.ORACLE);
+        Gui2ConnectionDialog.Result timeout = timeoutForm
+            .name("local")
+            .jdbcUrl("jdbc:oracle:thin:@localhost:1521/XEPDB1")
+            .username("ora")
+            .password("bad")
+            .testConnection(100L);
+
+        assertFalse(timeout.created());
+        assertEquals("Connection test timed out after 100ms", timeout.message());
+        assertTrue(timeoutSession.connectionNames().isEmpty());
+    }
+
+    @Test
+    public void invalidTestDraftDoesNotCallConnectionTestService() throws Exception {
+        CountingOpener opener = new CountingOpener(ConnectionTestResult.success());
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
+            null,
+            editorStore(),
+            null,
+            null,
+            new ConnectionTestService(opener, new ImmediateExecutor())
+        );
+        Gui2ConnectionDialog.Form form = new Gui2ConnectionDialog(session).open(DatabaseType.POSTGRESQL);
+
+        Gui2ConnectionDialog.Result result = form.name("reporting").username("pg").password("secret").testConnection(250L);
+
+        assertFalse(result.created());
+        assertEquals("JDBC URL is required", result.message());
+        assertEquals(0, opener.openCount);
+    }
+
+    private InteractiveWorkspace.Session sessionWithTestResult(ConnectionTestResult result) throws Exception {
+        return new InteractiveWorkspace.Session(
+            null,
+            editorStore(),
+            null,
+            null,
+            new ConnectionTestService(new CountingOpener(result), new ImmediateExecutor())
+        );
+    }
+
+    private EditorStateStore editorStore() throws Exception {
+        return new EditorStateStore(new java.io.File(temporaryFolder.newFolder(), "editor.properties"), 30);
+    }
+
+    private static final class CountingOpener implements ConnectionTestService.ConnectionOpener {
+
+        private final ConnectionTestResult result;
+        private int openCount;
+
+        private CountingOpener(ConnectionTestResult result) {
+            this.result = result;
+        }
+
+        @Override
+        public Connection open(ConnectionConfig config) throws SQLException {
+            openCount++;
+            if (result.status() == ConnectionTestResult.Status.FAILURE) {
+                throw new SQLException(result.message());
+            }
+            if (result.status() == ConnectionTestResult.Status.TIMEOUT) {
+                throw new SQLException(result.message());
+            }
+            return null;
+        }
+    }
+
+    private static final class ImmediateExecutor implements ConnectionTestService.TaskExecutor {
+
+        @Override
+        public ConnectionTestService.PendingTask submit(final ConnectionTestService.ConnectionTask task) {
+            return new ConnectionTestService.PendingTask() {
+                @Override
+                public Connection get(long timeoutMillis) throws Exception {
+                    return task.open();
+                }
+
+                @Override
+                public void cancel() {}
+            };
+        }
     }
 }

@@ -14,6 +14,7 @@ public class TuiMessagesTest {
         assertTrue(messages.helpHint().contains("F6 open"));
         assertTrue(messages.helpHint().contains("F9 save query"));
         assertTrue(messages.helpHint().contains("F10 library"));
+        assertTrue(messages.helpHint().contains("edit/test/delete connections"));
         assertTrue(messages.helpBody().contains("F7: export current result page as CSV"));
         assertTrue(messages.helpBody().contains("F9: save current SQL to the query library"));
         assertTrue(messages.helpBody().contains("lib save <name>"));
@@ -37,6 +38,15 @@ public class TuiMessagesTest {
         assertTrue(messages.localizeStatus(SafetyGuard.MISSING_WHERE_MESSAGE).contains("top-level WHERE"));
         assertTrue(messages.runAnyway().contains("Run anyway"));
         assertTrue(messages.dangerousSqlCanceled().contains("Dangerous SQL execution canceled"));
+        assertTrue(messages.editSelectedConnectionAction().contains("Edit selected connection"));
+        assertTrue(messages.testSelectedConnectionAction().contains("Test selected connection"));
+        assertTrue(messages.deleteSelectedConnectionAction().contains("Delete selected connection"));
+        assertTrue(
+            messages.editConnectionWindowTitle(bo.ahosoft.sqlscript.domain.DatabaseType.POSTGRESQL).contains("Edit PostgreSQL connection")
+        );
+        assertTrue(messages.deleteConnectionConfirmation("reporting").contains("Delete saved connection: reporting?"));
+        assertTrue(messages.keepExistingPasswordHint().contains("Leave password blank"));
+        assertTrue(messages.testConnection().contains("Test"));
     }
 
     @Test
@@ -46,6 +56,7 @@ public class TuiMessagesTest {
         assertTrue(messages.helpHint().contains("F6 abrir"));
         assertTrue(messages.helpHint().contains("F9 guardar consulta"));
         assertTrue(messages.helpHint().contains("F10 biblioteca"));
+        assertTrue(messages.helpHint().contains("editar/probar/eliminar conexiones"));
         assertTrue(messages.helpBody().contains("F7: exportar pagina actual"));
         assertTrue(messages.helpBody().contains("F9: guardar el SQL actual en la biblioteca"));
         assertTrue(messages.helpBody().contains("lib save <name>"));
@@ -69,5 +80,12 @@ public class TuiMessagesTest {
         assertTrue(messages.localizeStatus(SafetyGuard.MISSING_WHERE_MESSAGE).contains("WHERE de nivel superior"));
         assertTrue(messages.runAnyway().contains("Ejecutar igual"));
         assertTrue(messages.dangerousSqlCanceled().contains("Ejecucion SQL peligrosa cancelada"));
+        assertTrue(messages.editSelectedConnectionAction().contains("Editar conexion seleccionada"));
+        assertTrue(messages.testSelectedConnectionAction().contains("Probar conexion seleccionada"));
+        assertTrue(messages.deleteSelectedConnectionAction().contains("Eliminar conexion seleccionada"));
+        assertTrue(messages.editConnectionWindowTitle(bo.ahosoft.sqlscript.domain.DatabaseType.ORACLE).contains("Editar conexion Oracle"));
+        assertTrue(messages.deleteConnectionConfirmation("reporting").contains("Eliminar conexion guardada: reporting?"));
+        assertTrue(messages.keepExistingPasswordHint().contains("Deja la contrasena vacia"));
+        assertTrue(messages.testConnection().contains("Probar"));
     }
 }

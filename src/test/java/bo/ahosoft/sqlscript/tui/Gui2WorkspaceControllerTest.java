@@ -76,7 +76,7 @@ public class Gui2WorkspaceControllerTest {
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
-        components.explorer().setSelectedIndex(2);
+        components.explorer().setSelectedIndex(5);
         controller.handleEnter();
 
         assertEquals(null, executor.statement);
@@ -92,7 +92,7 @@ public class Gui2WorkspaceControllerTest {
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
         components.window().setTextGUI(textGUI);
-        components.explorer().setSelectedIndex(2);
+        components.explorer().setSelectedIndex(5);
         controller.handleEnter();
 
         assertNotNull(textGUI.lastAddedWindow);
@@ -106,7 +106,7 @@ public class Gui2WorkspaceControllerTest {
         assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Back"));
         assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Defaults"));
 
-        components.explorer().setSelectedIndex(3);
+        components.explorer().setSelectedIndex(6);
         controller.handleEnter();
 
         assertEquals("New PostgreSQL connection", textGUI.lastAddedWindow.getTitle());
@@ -435,24 +435,24 @@ public class Gui2WorkspaceControllerTest {
         assertEquals("Status: Ready | Active: local [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("F1/? help"));
         assertFalse(components.helpText().getText().contains("Ctrl+H help"));
-        assertEquals("Language: English", components.explorer().getItemAt(9).toString());
+        assertEquals("Language: English", components.explorer().getItemAt(12).toString());
 
-        components.explorer().setSelectedIndex(9);
+        components.explorer().setSelectedIndex(12);
         controller.handleEnter();
 
         assertEquals("Estado: Listo | Activa: local [DEV]", components.statusText().getText());
         assertTrue(components.helpText().getText().contains("F1/? ayuda"));
         assertFalse(components.helpText().getText().contains("Ctrl+H ayuda"));
-        assertEquals("Idioma: Espanol", components.explorer().getItemAt(9).toString());
+        assertEquals("Idioma: Espanol", components.explorer().getItemAt(12).toString());
         assertTrue(hasLabel(components.root(), "Editor SQL"));
         assertTrue(hasLabel(components.root(), "Resultados / Logs"));
         assertEquals("SPANISH", controller.languageName());
 
-        components.explorer().setSelectedIndex(9);
+        components.explorer().setSelectedIndex(12);
         controller.handleEnter();
 
         assertEquals("Status: Ready | Active: local [DEV]", components.statusText().getText());
-        assertEquals("Language: English", components.explorer().getItemAt(9).toString());
+        assertEquals("Language: English", components.explorer().getItemAt(12).toString());
         assertTrue(hasLabel(components.root(), "SQL Editor"));
         assertTrue(hasLabel(components.root(), "Results / Logs"));
         assertEquals("ENGLISH", controller.languageName());
@@ -464,7 +464,7 @@ public class Gui2WorkspaceControllerTest {
         Gui2WorkspaceController controller = new Gui2WorkspaceController(session(executor));
 
         Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
-        components.explorer().setSelectedIndex(9);
+        components.explorer().setSelectedIndex(12);
         controller.handleEnter();
 
         components.sqlEditor().setText("tables user");
@@ -1112,8 +1112,84 @@ public class Gui2WorkspaceControllerTest {
 
         assertTrue(result.created());
         assertEquals("pg", result.config().username());
-        assertEquals(11, components.explorer().getItemCount());
+        assertEquals(14, components.explorer().getItemCount());
         assertEquals("Status: Connection saved: analytics | Active: analytics [DEV]", components.statusText().getText());
+    }
+
+    @Test
+    public void selectedConnectionActionsOpenEditTestAndDeleteWorkflows() throws Exception {
+        CapturingExecutor executor = new CapturingExecutor();
+        InteractiveWorkspace.Session session = testableSession(executor, ConnectionTestResult.success());
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session);
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.explorer().setSelectedIndex(1);
+        controller.handleEnter();
+        components.explorer().setSelectedIndex(1);
+
+        controller.editSelectedConnection();
+        assertEquals("Edit PostgreSQL connection", textGUI.lastAddedWindow.getTitle());
+        assertEquals(Gui2ConnectionDialog.Mode.EDIT, controller.activeConnectionDialog().mode());
+        assertEquals("reporting", controller.activeConnectionDialog().name());
+        assertTrue(hasLabelContaining(textGUI.lastAddedWindow.getComponent(), "Leave password blank to keep the existing secret"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Test"));
+
+        Gui2ConnectionDialog.Result edited = controller.submitConnection(
+            new Gui2ConnectionDialog.Request(
+                Gui2ConnectionDialog.Mode.EDIT,
+                "reporting",
+                DatabaseType.POSTGRESQL,
+                ConnectionEnvironment.QA,
+                "reporting-renamed",
+                "jdbc:postgresql://localhost:5432/renamed",
+                "pg2",
+                Gui2ConnectionDialog.PasswordDraft.preserveExisting(),
+                "secret",
+                Arrays.asList("audit"),
+                Arrays.asList("audit")
+            )
+        );
+
+        assertTrue(edited.created());
+        assertEquals("reporting-renamed", session.activeConnectionName());
+        assertEquals("* [QA] reporting-renamed [POSTGRESQL]", components.explorer().getItemAt(1).toString());
+
+        components.explorer().setSelectedIndex(1);
+        assertTrue(controller.testSelectedConnection(250L));
+        assertTrue(components.resultsText().getText().contains("Connection test succeeded"));
+        assertEquals("reporting-renamed", session.activeConnectionName());
+
+        assertFalse(controller.deleteSelectedConnection(false));
+        assertTrue(components.resultsText().getText().contains("Delete saved connection: reporting-renamed?"));
+        assertTrue(controller.deleteSelectedConnection(true));
+        assertEquals(null, session.activeConnectionName());
+        assertTrue(components.statusText().getText().contains("Active: none"));
+        assertEquals("New Oracle connection", components.explorer().getItemAt(4).toString());
+    }
+
+    @Test
+    public void selectedConnectionDeleteConfirmationCanBeDrivenFromKeyboardModal() throws Exception {
+        Gui2WorkspaceController controller = new Gui2WorkspaceController(session(new CapturingExecutor()));
+        RecordingTextGUI textGUI = new RecordingTextGUI();
+
+        Gui2WorkspaceLayout.WorkspaceComponents components = controller.build();
+        components.window().setTextGUI(textGUI);
+        components.explorer().setSelectedIndex(1);
+
+        controller.deleteSelectedConnection();
+
+        assertEquals("Delete Connection", textGUI.lastAddedWindow.getTitle());
+        assertTrue(hasLabelContaining(textGUI.lastAddedWindow.getComponent(), "Delete saved connection: reporting?"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Delete"));
+        assertTrue(hasButton(textGUI.lastAddedWindow.getComponent(), "Cancel"));
+
+        clickButton(textGUI.lastAddedWindow.getComponent(), "Delete");
+
+        assertEquals(0, textGUI.windows.size());
+        assertFalse(components.resultsText().getText().contains("reporting?"));
+        assertEquals("New Oracle connection", components.explorer().getItemAt(4).toString());
     }
 
     @Test
@@ -1131,7 +1207,7 @@ public class Gui2WorkspaceControllerTest {
 
         assertFalse(cancelled.created());
         assertEquals("Connection creation cancelled", components.resultsText().getText());
-        assertEquals(10, components.explorer().getItemCount());
+        assertEquals(13, components.explorer().getItemCount());
     }
 
     private InteractiveWorkspace.Session session(CapturingExecutor executor) throws Exception {
@@ -1140,6 +1216,43 @@ public class Gui2WorkspaceControllerTest {
             new EditorStateStore(temporaryFolder.newFile("editor.properties"), 5),
             executor,
             new QueryLibraryStore(temporaryFolder.newFile("query-library.properties"), java.time.Clock.systemUTC())
+        );
+        session.addConnection("local", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "secret"));
+        session.addConnection(
+            "reporting",
+            new ConnectionConfig(DatabaseType.POSTGRESQL, "jdbc:postgresql://localhost:5432/app", "pg", "secret", Arrays.asList("audit"))
+        );
+        return session;
+    }
+
+    private InteractiveWorkspace.Session testableSession(CapturingExecutor executor, final ConnectionTestResult result) throws Exception {
+        ConnectionTestService service = new ConnectionTestService(
+            new ConnectionTestService.ConnectionOpener() {
+                public java.sql.Connection open(ConnectionConfig config) {
+                    return null;
+                }
+            },
+            new ConnectionTestService.TaskExecutor() {
+                public ConnectionTestService.PendingTask submit(ConnectionTestService.ConnectionTask task) {
+                    return new ConnectionTestService.PendingTask() {
+                        public java.sql.Connection get(long timeoutMillis) throws Exception {
+                            if (!result.successful()) {
+                                throw new SQLException(result.message());
+                            }
+                            return null;
+                        }
+
+                        public void cancel() {}
+                    };
+                }
+            }
+        );
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
+            null,
+            new EditorStateStore(temporaryFolder.newFile("testable-editor.properties"), 5),
+            executor,
+            new QueryLibraryStore(temporaryFolder.newFile("testable-query-library.properties"), java.time.Clock.systemUTC()),
+            service
         );
         session.addConnection("local", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/XEPDB1", "ora", "secret"));
         session.addConnection(

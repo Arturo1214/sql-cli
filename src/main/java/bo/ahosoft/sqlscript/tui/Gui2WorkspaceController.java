@@ -192,6 +192,73 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         current.resultsText().setText(activeConnectionDialog.feedback());
     }
 
+    public void editSelectedConnection() {
+        String name = selectedConnectionName();
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        if (name == null) {
+            current.resultsText().setText(messages().noConnectionSelected());
+            return;
+        }
+        ConnectionConfig existing = session.connectionNamed(name);
+        if (existing == null) {
+            current.resultsText().setText(messages().noConnectionSelected());
+            return;
+        }
+        activeConnectionDialog = new Gui2ConnectionDialog(session, messages()).openEdit(name, existing);
+        activeConnectionDialogWindow = connectionDialogWindow(activeConnectionDialog);
+        WindowBasedTextGUI textGUI = current.window().getTextGUI();
+        if (textGUI != null) {
+            textGUI.addWindow(activeConnectionDialogWindow);
+        }
+        current.resultsText().setText(activeConnectionDialog.feedback());
+    }
+
+    public void testSelectedConnection() {
+        testSelectedConnection(5000L);
+    }
+
+    public boolean testSelectedConnection(long timeoutMillis) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        String name = selectedConnectionName();
+        ConnectionConfig config = session.connectionNamed(name);
+        if (config == null) {
+            current.resultsText().setText(messages().noConnectionSelected());
+            return false;
+        }
+        ConnectionTestResult result = session.testConnectionFromAction(config, timeoutMillis);
+        current.resultsText().setText(result.message());
+        refresh();
+        current.resultsText().setText(result.message());
+        return result.successful();
+    }
+
+    public void deleteSelectedConnection() {
+        deleteSelectedConnection(false);
+    }
+
+    public boolean deleteSelectedConnection(boolean confirmed) {
+        Gui2WorkspaceLayout.WorkspaceComponents current = ensureBuilt();
+        String name = selectedConnectionName();
+        if (name == null || session.connectionNamed(name) == null) {
+            current.resultsText().setText(messages().noConnectionSelected());
+            return false;
+        }
+        if (!confirmed) {
+            current.resultsText().setText(messages().deleteConnectionConfirmation(name));
+            showDeleteConnectionConfirmation(name);
+            return false;
+        }
+        try {
+            boolean deleted = session.deleteConnectionFromAction(name);
+            current.rebuildExplorer(session.dashboardState(), this);
+            refresh();
+            return deleted;
+        } catch (Exception ex) {
+            current.resultsText().setText(ex.getMessage());
+            return false;
+        }
+    }
+
     public void switchLanguage() {
         language = language.toggle();
         layout.setMessages(messages());
@@ -723,16 +790,16 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
     }
 
     private BasicWindow connectionDialogWindow(final Gui2ConnectionDialog.Form form) {
-        final TextBox name = new TextBox(new TerminalSize(42, 1));
+        final TextBox name = new TextBox(new TerminalSize(42, 1), valueOrEmpty(form.name()));
         final ComboBox<ConnectionEnvironment> environment = new ComboBox<ConnectionEnvironment>(
             Arrays.asList(ConnectionEnvironment.values())
         );
         environment.setReadOnly(true);
-        environment.setSelectedItem(ConnectionEnvironment.DEV);
-        final TextBox jdbcUrl = new TextBox(new TerminalSize(42, 1), defaultJdbcUrl(form.databaseType()));
-        final TextBox username = new TextBox(new TerminalSize(42, 1));
+        environment.setSelectedItem(form.environment());
+        final TextBox jdbcUrl = new TextBox(new TerminalSize(42, 1), valueOrDefault(form.jdbcUrl(), defaultJdbcUrl(form.databaseType())));
+        final TextBox username = new TextBox(new TerminalSize(42, 1), valueOrEmpty(form.username()));
         final TextBox password = new TextBox(new TerminalSize(42, 1)).setMask('*');
-        final TextBox schemas = new TextBox(new TerminalSize(42, 1));
+        final TextBox schemas = new TextBox(new TerminalSize(42, 1), joinComma(form.selectedSchemas()));
 
         Panel fields = new Panel(new GridLayout(2));
         final TuiMessages messages = messages();
@@ -748,6 +815,10 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         fields.addComponent(password);
         fields.addComponent(new Label(messages.schemas()));
         fields.addComponent(schemas);
+        if (form.mode() == Gui2ConnectionDialog.Mode.EDIT) {
+            fields.addComponent(new Label(""));
+            fields.addComponent(new Label(messages.keepExistingPasswordHint()));
+        }
 
         Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
         buttons.addComponent(
@@ -755,23 +826,35 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
                 messages.save(),
                 new Runnable() {
                     public void run() {
-                        Gui2ConnectionDialog.Result result = submitConnection(
-                            new Gui2ConnectionDialog.Request(
-                                form.databaseType(),
-                                environment.getSelectedItem(),
-                                name.getText(),
-                                jdbcUrl.getText(),
-                                username.getText(),
-                                password.getText(),
-                                splitSchemas(schemas.getText()),
-                                splitSchemas(schemas.getText())
-                            )
+                        Gui2ConnectionDialog.Request request = requestFromFields(
+                            form,
+                            environment,
+                            name,
+                            jdbcUrl,
+                            username,
+                            password,
+                            schemas
                         );
+                        Gui2ConnectionDialog.Result result = submitConnection(request);
                         ensureBuilt().resultsText().setText(result.message());
                         if (result.created()) {
                             activeConnectionDialog = null;
                             closeActiveConnectionDialogWindow();
                         }
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages.testConnection(),
+                new Runnable() {
+                    public void run() {
+                        Gui2ConnectionDialog.Result result = new Gui2ConnectionDialog(session, messages()).test(
+                            requestFromFields(form, environment, name, jdbcUrl, username, password, schemas),
+                            5000L
+                        );
+                        ensureBuilt().resultsText().setText(result.message());
                     }
                 }
             )
@@ -814,7 +897,11 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         root.addComponent(fields);
         root.addComponent(buttons);
 
-        BasicWindow window = new BasicWindow(messages.connectionWindowTitle(form.databaseType()));
+        BasicWindow window = new BasicWindow(
+            form.mode() == Gui2ConnectionDialog.Mode.EDIT
+                ? messages.editConnectionWindowTitle(form.databaseType())
+                : messages.connectionWindowTitle(form.databaseType())
+        );
         window.setHints(Arrays.asList(Window.Hint.CENTERED, Window.Hint.MODAL));
         window.setComponent(root);
         return window;
@@ -854,6 +941,70 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
         window.setHints(Arrays.asList(Window.Hint.CENTERED, Window.Hint.MODAL));
         window.setComponent(root);
         return window;
+    }
+
+    private Gui2ConnectionDialog.Request requestFromFields(
+        Gui2ConnectionDialog.Form form,
+        ComboBox<ConnectionEnvironment> environment,
+        TextBox name,
+        TextBox jdbcUrl,
+        TextBox username,
+        TextBox password,
+        TextBox schemas
+    ) {
+        List<String> selectedSchemas = splitSchemas(schemas.getText());
+        Gui2ConnectionDialog.PasswordDraft passwordDraft = form.mode() == Gui2ConnectionDialog.Mode.EDIT && isBlank(password.getText())
+            ? Gui2ConnectionDialog.PasswordDraft.preserveExisting()
+            : Gui2ConnectionDialog.PasswordDraft.replaceWith(password.getText());
+        return new Gui2ConnectionDialog.Request(
+            form.mode(),
+            form.mode() == Gui2ConnectionDialog.Mode.EDIT ? selectedConnectionName() : null,
+            form.databaseType(),
+            environment.getSelectedItem(),
+            name.getText(),
+            jdbcUrl.getText(),
+            username.getText(),
+            passwordDraft,
+            form.mode() == Gui2ConnectionDialog.Mode.EDIT ? existingPasswordForSelectedConnection() : null,
+            selectedSchemas,
+            selectedSchemas
+        );
+    }
+
+    private String existingPasswordForSelectedConnection() {
+        ConnectionConfig config = session.connectionNamed(selectedConnectionName());
+        return config == null ? null : config.password();
+    }
+
+    private void showDeleteConnectionConfirmation(final String name) {
+        final BasicWindow[] dialog = new BasicWindow[1];
+        Panel root = confirmationRoot(messages().deleteConnectionConfirmation(name));
+        Panel buttons = new Panel(new LinearLayout(Direction.HORIZONTAL));
+        buttons.addComponent(
+            new Button(
+                messages().delete(),
+                new Runnable() {
+                    public void run() {
+                        if (deleteSelectedConnection(true)) {
+                            closeDialog(dialog[0]);
+                        }
+                    }
+                }
+            )
+        );
+        buttons.addComponent(
+            new Button(
+                messages().cancel(),
+                new Runnable() {
+                    public void run() {
+                        closeDialog(dialog[0]);
+                    }
+                }
+            )
+        );
+        root.addComponent(buttons);
+        dialog[0] = confirmationWindow(messages().deleteConnectionTitle(), root);
+        addOrRenderWindow(dialog[0], messages().deleteConnectionConfirmation(name));
     }
 
     private interface DialogAction {
@@ -992,6 +1143,28 @@ public final class Gui2WorkspaceController implements Gui2WorkspaceLayout.Worksp
             }
         }
         return schemas;
+    }
+
+    private String selectedConnectionName() {
+        WorkspaceDashboardRenderer.DashboardState state = session.dashboardState();
+        Gui2WorkspaceLayout.WorkspaceComponents current = components;
+        int selectedIndex = current == null ? -1 : current.explorer().getSelectedIndex();
+        if (selectedIndex >= 0 && selectedIndex < state.connections().size()) {
+            return state.connections().get(selectedIndex).name();
+        }
+        return session.activeConnectionName();
+    }
+
+    private static String valueOrEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String valueOrDefault(String value, String fallback) {
+        return isBlank(value) ? fallback : value;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 
     private static List<String> splitCsv(String value) {

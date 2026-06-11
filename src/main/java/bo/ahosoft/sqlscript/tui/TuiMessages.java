@@ -57,8 +57,8 @@ public final class TuiMessages {
 
     public String helpHint() {
         return language == TuiLanguage.SPANISH
-            ? "Ctrl+R ejecutar | F6 abrir SQL | F9 guardar consulta | F10 biblioteca | F7/F8 exportar CSV | F1/? ayuda | Tab foco | Esc cerrar | diagnosticos SQL"
-            : "Ctrl+R run | F6 open SQL | F9 save query | F10 library | F7/F8 export CSV | F1/? help | Tab focus | Esc close | SQL diagnostics";
+            ? "Ctrl+R ejecutar | F6 abrir SQL | F9 guardar consulta | F10 biblioteca | editar/probar/eliminar conexiones | F7/F8 exportar CSV | F1/? ayuda | Tab foco | Esc cerrar | diagnosticos SQL"
+            : "Ctrl+R run | F6 open SQL | F9 save query | F10 library | edit/test/delete connections | F7/F8 export CSV | F1/? help | Tab focus | Esc close | SQL diagnostics";
     }
 
     public String statusText(WorkspaceDashboardRenderer.DashboardState state) {
@@ -210,7 +210,8 @@ public final class TuiMessages {
                 "ArrowUp/ArrowDown: desplazar resultados verticalmente\n" +
                 "ArrowLeft/ArrowRight: desplazar resultados horizontalmente\n" +
                 "PageDown/PageUp: pagina siguiente/anterior\n" +
-                "Conexiones: Nueva conexion Oracle, Nueva conexion PostgreSQL\n" +
+                "Conexiones: Nueva conexion Oracle, Nueva conexion PostgreSQL, Editar conexion seleccionada, Probar conexion seleccionada, Eliminar conexion seleccionada\n" +
+                "Contrasenas: deja la contrasena vacia al editar para conservar el secreto existente; solo las contrasenas nuevas se pueden revelar. Probar conexion no guarda borradores.\n" +
                 "Enter: seleccionar conexion guardada o abrir accion seleccionada\n" +
                 "Comandos de metadatos: tables, describe <table>, indexes <table>\n" +
                 "Biblioteca: lib save <name>, lib save <name> --template, lib list, lib search <text>, lib load <id> --replace, lib preview <id> --param name=value, lib fill <id> --replace --param name=value, lib delete <id> --yes\n" +
@@ -237,7 +238,8 @@ public final class TuiMessages {
             "ArrowUp/ArrowDown: scroll results vertically\n" +
             "ArrowLeft/ArrowRight: scroll results horizontally\n" +
             "PageDown/PageUp: next/previous result page\n" +
-            "Connections: New Oracle connection, New PostgreSQL connection\n" +
+            "Connections: New Oracle connection, New PostgreSQL connection, Edit selected connection, Test selected connection, Delete selected connection\n" +
+            "Passwords: leave the edit password blank to keep the existing secret; only newly typed passwords can be revealed. Testing a connection does not save drafts.\n" +
             "Enter: select saved connection or open selected action\n" +
             "Metadata commands: tables, describe <table>, indexes <table>\n" +
             "Query library: lib save <name>, lib save <name> --template, lib list, lib search <text>, lib load <id> --replace, lib preview <id> --param name=value, lib fill <id> --replace --param name=value, lib delete <id> --yes\n" +
@@ -251,6 +253,47 @@ public final class TuiMessages {
 
     String connectionSaved(String name) {
         return language == TuiLanguage.SPANISH ? "Conexion guardada: " + name : "Connection saved: " + name;
+    }
+
+    String editSelectedConnectionAction() {
+        return language == TuiLanguage.SPANISH ? "Editar conexion seleccionada" : "Edit selected connection";
+    }
+
+    String testSelectedConnectionAction() {
+        return language == TuiLanguage.SPANISH ? "Probar conexion seleccionada" : "Test selected connection";
+    }
+
+    String deleteSelectedConnectionAction() {
+        return language == TuiLanguage.SPANISH ? "Eliminar conexion seleccionada" : "Delete selected connection";
+    }
+
+    String editConnectionWindowTitle(DatabaseType databaseType) {
+        if (language == TuiLanguage.SPANISH) {
+            return "Editar conexion " + databaseTypeLabel(databaseType);
+        }
+        return "Edit " + databaseTypeLabel(databaseType) + " connection";
+    }
+
+    String deleteConnectionTitle() {
+        return language == TuiLanguage.SPANISH ? "Eliminar conexion" : "Delete Connection";
+    }
+
+    String deleteConnectionConfirmation(String name) {
+        return language == TuiLanguage.SPANISH ? "Eliminar conexion guardada: " + name + "?" : "Delete saved connection: " + name + "?";
+    }
+
+    String noConnectionSelected() {
+        return language == TuiLanguage.SPANISH ? "No hay conexion seleccionada" : "No selected connection";
+    }
+
+    String keepExistingPasswordHint() {
+        return language == TuiLanguage.SPANISH
+            ? "Deja la contrasena vacia para conservar el secreto existente."
+            : "Leave password blank to keep the existing secret.";
+    }
+
+    String testConnection() {
+        return language == TuiLanguage.SPANISH ? "Probar" : "Test";
     }
 
     String loadSqlFileAction() {

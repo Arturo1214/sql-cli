@@ -401,6 +401,91 @@ public class InteractiveWorkspaceTest {
     }
 
     @Test
+    public void sessionEditConnectionActionRenamesActiveConnectionAndPersistsUpdate() throws Exception {
+        ConnectionRegistry registry = registry();
+        registry.save("qa", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "old-secret"));
+        InteractiveWorkspace.Session session = session(registry, new CapturingExecutor());
+
+        ConnectionConfig updated = new ConnectionConfig(
+            DatabaseType.ORACLE,
+            ConnectionEnvironment.PROD,
+            "jdbc:oracle:thin:@prod:1521/PROD",
+            "support",
+            "new-secret",
+            Collections.<String>emptyList()
+        );
+        session.editConnectionFromAction("qa", "qa-prod", updated);
+
+        assertEquals("qa-prod", session.activeConnectionName());
+        assertEquals(ConnectionEnvironment.PROD, session.activeConnection().environment());
+        assertFalse(registry.exists("qa"));
+        assertEquals("support", registry.load("qa-prod").username());
+        assertEquals("Connection updated: qa-prod", session.dashboardState().statusMessage());
+    }
+
+    @Test
+    public void sessionDeleteConnectionActionClearsActiveConnectionSafely() throws Exception {
+        ConnectionRegistry registry = registry();
+        registry.save("qa", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "secret"));
+        registry.save("prod", new ConnectionConfig("jdbc:oracle:thin:@prod:1521/PROD", "prod", "secret"));
+        InteractiveWorkspace.Session session = session(registry, new CapturingExecutor());
+        session.useConnection("qa");
+
+        boolean deleted = session.deleteConnectionFromAction("qa");
+
+        assertTrue(deleted);
+        assertEquals(null, session.activeConnectionName());
+        assertEquals(null, session.activeConnection());
+        assertFalse(registry.exists("qa"));
+        assertEquals("Connection deleted; no active connection selected", session.dashboardState().statusMessage());
+    }
+
+    @Test
+    public void sessionDeleteConnectionActionRemovesInactiveConnectionAndKeepsActive() throws Exception {
+        ConnectionRegistry registry = registry();
+        registry.save("qa", new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "secret"));
+        registry.save("prod", new ConnectionConfig("jdbc:oracle:thin:@prod:1521/PROD", "prod", "secret"));
+        InteractiveWorkspace.Session session = session(registry, new CapturingExecutor());
+        session.useConnection("qa");
+
+        assertTrue(session.deleteConnectionFromAction("prod"));
+
+        assertEquals("qa", session.activeConnectionName());
+        assertTrue(registry.exists("qa"));
+        assertFalse(registry.exists("prod"));
+        assertEquals("Connection deleted: prod", session.dashboardState().statusMessage());
+    }
+
+    @Test
+    public void sessionTestConnectionActionReportsResultWithoutSavingDraft() throws Exception {
+        ConnectionRegistry registry = registry();
+        InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
+            registry,
+            editorStore(),
+            new CapturingExecutor(),
+            queryLibraryStore(),
+            new ConnectionTestService(
+                new ConnectionTestService.ConnectionOpener() {
+                    @Override
+                    public java.sql.Connection open(ConnectionConfig config) {
+                        return null;
+                    }
+                },
+                null
+            )
+        );
+
+        ConnectionTestResult result = session.testConnectionFromAction(
+            new ConnectionConfig("jdbc:oracle:thin:@localhost:1521/QA", "qa", "secret"),
+            500L
+        );
+
+        assertTrue(result.successful());
+        assertTrue(registry.list().isEmpty());
+        assertEquals("Connection test succeeded", session.dashboardState().statusMessage());
+    }
+
+    @Test
     public void queryLibraryCommandsSaveListSearchFavoriteAndDeleteCurrentBuffer() throws Exception {
         InteractiveWorkspace.Session session = new InteractiveWorkspace.Session(
             null,
